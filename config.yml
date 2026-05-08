@@ -8,9 +8,21 @@ dvf:
     2025: "https://www.data.gouv.fr/api/1/datasets/r/902db087-b0eb-4cbb-a968-0b499bde5bc4"
 
 loyers:
-  url: ""
   bronze_dir: "data/bronze/loyers"
-
+  fichiers_parquet:
+    2014: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/f0a1c2d6-05bd-41a8-b14f-f216beb912a8.parquet"
+    2015: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/b1dd3fae-abab-4b78-aee1-7740eedac478.parquet"
+    2016: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/25b4ea59-3d0c-4ca9-8b6f-0bf3496ef5c7.parquet"
+    2020: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/f0f3abb1-2aed-4301-a44a-b14b43d73e1a.parquet"
+    2022: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/de64fb158e54312e710786ca8a9ba0a9.parquet"
+    2023: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/3da6ba68-1f1e-4c49-a7e8-f521bd099599.parquet"
+    2024: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/13d660de-6108-4df6-8a54-1828a991a186.parquet"
+    2025: "https://object.files.data.gouv.fr/hydra-parquet/hydra-parquet/21543ae5-7d6e-4c49-8719-e7f725d441da.parquet"
+  fichiers_csv:
+    2017: "https://www.data.gouv.fr/api/1/datasets/r/e30cb3ba-e1ca-4bec-b6ea-3cb751d6b862"
+    2018: "https://www.data.gouv.fr/api/1/datasets/r/4f1363af-28d9-4ec2-bdad-88f8b51fd7f2"
+    2019: "https://www.data.gouv.fr/api/1/datasets/r/5dcdae40-91b5-44ba-8ffc-65af94b61c6a"
+    2021: "https://www.data.gouv.fr/api/1/datasets/r/422b3274-114d-4abe-850c-dfc0c69b981f"
 insee:
   url: ""
   bronze_dir: "data/bronze/insee"
