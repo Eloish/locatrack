@@ -24,5 +24,10 @@ loyers:
     2019: "https://www.data.gouv.fr/api/1/datasets/r/5dcdae40-91b5-44ba-8ffc-65af94b61c6a"
     2021: "https://www.data.gouv.fr/api/1/datasets/r/422b3274-114d-4abe-850c-dfc0c69b981f"
 insee:
-  url: ""
   bronze_dir: "data/bronze/insee"
+  fichiers:
+    2017: "https://www.insee.fr/fr/statistiques/fichier/4291712/indic-struct-distrib-revenu-2017-COMMUNES.zip"
+    2018: "https://www.insee.fr/fr/statistiques/fichier/5009218/indic-struct-distrib-revenu-2018-COMMUNES_csv.zip"
+    2019: "https://www.insee.fr/fr/statistiques/fichier/6036907/indic-struct-distrib-revenu-2019-COMMUNES_csv.zip"
+    2020: "https://www.insee.fr/fr/statistiques/fichier/6692220/indic-struct-distrib-revenu-2020-COMMUNES_csv.zip"
+    2021: "https://www.insee.fr/fr/statistiques/fichier/7756855/indic-struct-distrib-revenu-2021-COMMUNES_csv.zip"
