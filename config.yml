@@ -31,3 +31,12 @@ insee:
     2019: "https://www.insee.fr/fr/statistiques/fichier/6036907/indic-struct-distrib-revenu-2019-COMMUNES_csv.zip"
     2020: "https://www.insee.fr/fr/statistiques/fichier/6692220/indic-struct-distrib-revenu-2020-COMMUNES_csv.zip"
     2021: "https://www.insee.fr/fr/statistiques/fichier/7756855/indic-struct-distrib-revenu-2021-COMMUNES_csv.zip"
+communes:
+  url: "https://www.data.gouv.fr/api/1/datasets/r/f5df602b-3800-44d7-b2df-fa40a0350325"
+  bronze_dir: "data/bronze/communes"
+database:
+  host: localhost
+  port: 5432
+  name: locatrack
+  user: postgres
+  password: "1234"

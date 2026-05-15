@@ -2,3 +2,5 @@ requests
 pandas
 pyarrow
 pyyaml
+psycopg2-binary
+sqlalchemy
