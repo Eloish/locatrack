@@ -4,3 +4,4 @@ pyarrow
 pyyaml
 psycopg2-binary
 sqlalchemy
+notebook

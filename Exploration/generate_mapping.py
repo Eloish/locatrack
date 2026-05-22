@@ -1,79 +1,102 @@
 import os
-import re
+import glob
 import pandas as pd
 
-# Configuration des chemins
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOSSIER_ZONAGES = os.path.join(BASE_DIR, "data/bronze/loyers_zonages")
 
-print("🚀 Démarrage de la réconciliation (Version corrigée Regex)...")
+ENCODINGS = ["latin-1", "utf-8", "cp1252", "iso-8859-1"]
 
-# 1. Chargement des données
-try:
-    # Lecture des fichiers Parquet 
-    df_communes = pd.read_parquet(os.path.join(BASE_DIR, "data/bronze/communes/communes.parquet"))
-    df_loyers = pd.read_parquet(os.path.join(BASE_DIR, "data/bronze/loyers/annee=2023/loyers_2023.parquet"))
-except Exception as e:
-    print(f"Erreur de chargement : {e}")
-    exit()
+def lire_csv_robuste(filepath: str) -> pd.DataFrame | None:
+    """Essaie plusieurs encodages jusqu'à ce que ça marche."""
+    for enc in ENCODINGS:
+        try:
+            df = pd.read_csv(filepath, sep=";", dtype=str, encoding=enc)
+            return df
+        except UnicodeDecodeError:
+            continue
+        except Exception as e:
+            print(f"  ⚠ Erreur inattendue ({enc}) : {e}")
+            return None
+    print(f"  ⚠ Aucun encodage ne fonctionne pour : {filepath}")
+    return None
 
-agglos_loyers = df_loyers["agglomeration"].unique()
-ref_insee = df_communes[["nom_unite_urbaine"]].dropna().drop_duplicates()
+def trouver_colonne(df: pd.DataFrame, candidats: list[str]) -> str | None:
+    """Trouve la première colonne qui matche un des noms candidats (insensible à la casse)."""
+    cols_upper = {c.upper(): c for c in df.columns}
+    for candidat in candidats:
+        if candidat.upper() in cols_upper:
+            return cols_upper[candidat.upper()]
+    return None
 
-def nettoyer_nom(nom):
-    if not nom: return ""
-    nom = nom.lower()
-    # Nettoyage des préfixes types [cite: 5, 41]
-    nom = re.sub(r"agglomération (de |d'|du |des |)", "", nom)
-    nom = re.sub(r" agglomération$", "", nom)
-    nom = re.sub(r"unité urbaine (de |d'|)", "", nom)
-    # On remplace les caractères spéciaux par des espaces pour simplifier
-    nom = re.sub(r"[-'()]", " ", nom) 
-    return nom.strip()
+def construire_mapping(dossier: str) -> pd.DataFrame:
+    rows = []
 
-auto = []
-manuel = []
+    for obs_code in sorted(os.listdir(dossier)):
+        chemin_obs = os.path.join(dossier, obs_code)
+        if not os.path.isdir(chemin_obs):
+            continue
 
-# Liste de mots à ignorer pour éviter les faux positifs
-STOP_WORDS = ["saint", "sainte", "sur", "sous", "les", "aux", "grand", "grande", "pays", "hors"]
+        fichiers = glob.glob(os.path.join(chemin_obs, "*onage*.csv"))
+        if not fichiers:
+            print(f"⚠ Pas de fichier Zonage dans : {obs_code}")
+            continue
 
-for agglo in sorted(agglos_loyers):
-    nom_propre = nettoyer_nom(agglo)
-    match_found = False
-    
-    # Stratégie A : Match exact sur le nom nettoyé
-    match = ref_insee[ref_insee["nom_unite_urbaine"].apply(nettoyer_nom) == nom_propre]
-    
-    if len(match) > 0:
-        match_found = True
-        valeur_insee = match["nom_unite_urbaine"].iloc[0]
-    else:
-        # Stratégie B : Tokenisation (recherche par mot)
-        mots = nom_propre.split()
-        mots_filtres = [m for m in mots if len(m) > 3 and m not in STOP_WORDS]
-        
-        for mot in mots_filtres:
-            # CRUCIAL : regex=False pour éviter l'erreur pyarrow.lib.ArrowInvalid 
-            match_mot = ref_insee[ref_insee["nom_unite_urbaine"].str.contains(mot, na=False, case=False, regex=False)]
-            if len(match_mot) > 0:
-                match_found = True
-                valeur_insee = match_mot["nom_unite_urbaine"].iloc[0]
-                break 
+        for f in fichiers:
+            df = lire_csv_robuste(f)
+            if df is None:
+                continue
 
-    if match_found:
-        auto.append({"nom_agglomeration_olap": agglo, "nom_unite_urbaine_insee": valeur_insee, "methode": "auto"})
-    else:
-        manuel.append({"nom_agglomeration_olap": agglo, "nom_unite_urbaine_insee": "", "methode": "manuel"})
+            print(f"  Colonnes {obs_code} : {list(df.columns)}")
 
-# 2. Sauvegarde des résultats 
-output_dir = os.path.join(BASE_DIR, "data")
-os.makedirs(output_dir, exist_ok=True)
+            # Colonne INSEE — plusieurs noms possibles
+            col_insee = trouver_colonne(df, ["INSEE", "INSEE_COM", "Commune", "COD_COM"])
+            if col_insee is None:
+                print(f"  ⚠ Pas de colonne INSEE dans {obs_code} : {list(df.columns)}")
+                continue
 
-pd.DataFrame(auto).to_csv(os.path.join(output_dir, "mapping_auto.csv"), index=False)
-pd.DataFrame(manuel).to_csv(os.path.join(output_dir, "mapping_manuel.csv"), index=False)
+            # Colonne nom commune
+            col_libcom = trouver_colonne(df, ["Lib_com", "LIB_COM", "Libelle", "NOM_COM", "nom_com"])
 
-print(f"\n✅ Terminé ! Auto: {len(auto)} | Manuel: {len(manuel)}")
+            # Colonne zone
+            col_zone = trouver_colonne(df, ["Zone", "ZONE", "zone", "num_zone"])
 
-# On utilise 2023 car c'est l'année avec le plus d'agglomérations (61)
-# Ce mapping est valable pour toutes les années 2014-2025
-# car les noms d'agglomérations sont stables dans le temps
+            # Colonne libellé zone
+            col_libzone = trouver_colonne(df, ["Lib_zone", "LIB_ZONE", "lib_zone", "libelle_zone"])
 
+            # Construire le dataframe avec les colonnes trouvées
+            df_out = pd.DataFrame()
+            df_out["code_insee"]  = df[col_insee].str.strip().str.zfill(5)
+            df_out["nom_commune"] = df[col_libcom].str.strip() if col_libcom else ""
+            df_out["zone"]        = df[col_zone].str.strip()   if col_zone    else ""
+            df_out["lib_zone"]    = df[col_libzone].str.strip() if col_libzone else ""
+            df_out["observatory_b"] = obs_code
+
+            # Dédupliquer par commune (plusieurs lignes par IRIS)
+            df_out = df_out.drop_duplicates(subset=["code_insee"])
+
+            rows.append(df_out)
+            print(f"✓ {obs_code} : {df_out['code_insee'].nunique()} communes")
+
+    if not rows:
+        print("❌ Aucune donnée extraite")
+        return pd.DataFrame()
+
+    return pd.concat(rows, ignore_index=True).drop_duplicates(
+        subset=["observatory_b", "code_insee"]
+    )
+
+
+if __name__ == "__main__":
+    df_mapping = construire_mapping(DOSSIER_ZONAGES)
+
+    print(f"\n📊 Résultat :")
+    print(f"  Observatoires : {df_mapping['observatory_b'].nunique()}")
+    print(f"  Communes      : {df_mapping['code_insee'].nunique()}")
+    print(f"\nPar observatoire :")
+    print(df_mapping.groupby("observatory_b")["code_insee"].count()
+          .sort_values(ascending=False).to_string())
+
+    out = os.path.join(BASE_DIR, "data/mapping_observatory_communes.csv")
+    df_mapping.to_csv(out, index=False)
+    print(f"\n✅ Sauvegardé : {out}")
