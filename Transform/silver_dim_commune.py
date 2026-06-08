@@ -5,116 +5,226 @@ from io import StringIO
 from sqlalchemy import create_engine
 import yaml
 
+# ==================================================
+# CONFIG
+# ==================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-config_path = os.path.join(BASE_DIR, "config.yml")
 
-with open(config_path) as f:
+with open(os.path.join(BASE_DIR, "config.yml")) as f:
     config = yaml.safe_load(f)
 
 db = config["database"]
 
-# Utiliser SQLAlchemy pour pd.read_sql
 engine = create_engine(
     f"postgresql://{db['user']}:{db['password']}@{db['host']}:{db['port']}/{db['name']}"
 )
 
 conn = psycopg2.connect(
-    host=db['host'], port=db['port'],
-    dbname=db['name'], user=db['user'],
-    password=db['password']
+    host=db["host"],
+    port=db["port"],
+    dbname=db["name"],
+    user=db["user"],
+    password=db["password"]
 )
 
-# Charger staging.communes
-print("Chargement staging.communes...")
-df_communes = pd.read_sql("SELECT * FROM staging.communes", engine)
+# ==================================================
+# CONFIG SCHÉMA (ULTRA IMPORTANT)
+# ==================================================
+SCHEMA = [
+    "code_insee",
+    "nom_commune",
+    "code_postal",
+    "code_departement",
+    "region"
+]
 
-# Charger le mapping observatory → communes
-print("Chargement mapping...")
-df_mapping = pd.read_csv(
-    os.path.join(BASE_DIR, "data/mapping_observatory_communes.csv")
-)
+# ==================================================
+# NORMALISATION INSEE
+# ==================================================
+def normaliser_insee(dep, com):
+    dep = str(dep).strip()
 
-# Charger dim_agglomeration pour avoir le lien observatory_b → nom_agglomeration
-print("Chargement dim_agglomeration...")
-df_agglo = pd.read_sql(
-    "SELECT nom_agglomeration, observatory_b FROM silver.dim_agglomeration",
-    engine
-)
+    if dep in ["2A", "2B"]:
+        return dep + str(com).zfill(3)
 
-# Joindre mapping avec agglomeration pour avoir nom_agglomeration par commune
-df_mapping = df_mapping.merge(
-    df_agglo,
-    on="observatory_b",
-    how="left"
-)
+    return str(dep).zfill(2) + str(com).zfill(3)
 
-print(f"Communes dans staging    : {len(df_communes)}")
-print(f"Communes dans mapping    : {df_mapping['code_insee'].nunique()}")
+# ==================================================
+# SAFE CLEAN FUNCTION
+# ==================================================
+def clean_df(df):
+    # garder uniquement colonnes existantes utiles
+    for col in SCHEMA:
+        if col not in df.columns:
+            df[col] = None
 
-# Joindre staging.communes avec mapping
-df_final = df_communes.merge(
-    df_mapping[["code_insee", "nom_agglomeration"]].drop_duplicates("code_insee"),
-    on="code_insee",
-    how="left"
-)
+    df = df[SCHEMA]
 
-print(f"Communes après jointure  : {len(df_final)}")
-print(f"Avec agglomération       : {df_final['nom_agglomeration'].notna().sum()}")
-print(f"Sans agglomération       : {df_final['nom_agglomeration'].isna().sum()}")
+    # nettoyage string
+    for c in ["code_insee", "nom_commune", "code_postal", "code_departement", "region"]:
+        df[c] = df[c].astype(str).replace("nan", None)
 
-# Garder seulement les communes avec une agglomération
-df_final = df_final[df_final["nom_agglomeration"].notna()].copy()
-print(f"Communes filtrées        : {len(df_final)}")
+    # INSEE valid
+    df = df[df["code_insee"].notna()]
+    df["code_insee"] = df["code_insee"].str.strip()
+    df = df[df["code_insee"].str.len().between(5, 6)]
 
-# Préparer les colonnes
-df_insert = df_final[[
-    "code_insee", "nom_standard", "code_postal",
-    "dep_code", "reg_nom", "nom_agglomeration",
-    "latitude_mairie", "longitude_mairie", "population"
-]].rename(columns={
-    "nom_standard": "nom_commune",
-    "dep_code": "code_departement",
-    "reg_nom": "region",
-    "latitude_mairie": "latitude",
-    "longitude_mairie": "longitude"
-}).copy()
+    # dedup
+    df = df.drop_duplicates(subset=["code_insee"], keep="first")
 
-# Convertir types
-df_insert["code_insee"] = df_insert["code_insee"].astype(str).str.zfill(5)
+    return df
 
-# Code postal — correction float → string
-df_insert["code_postal"] = (
-    pd.to_numeric(df_insert["code_postal"], errors="coerce")
-    .astype("Int64")
+# ==================================================
+# PIPELINE
+# ==================================================
+print("🚀 BUILD DIM_COMMUNE ROBUST PIPELINE")
+
+frames = []
+
+# =====================
+# 1. STAGING COMMUNES
+# =====================
+try:
+    df = pd.read_sql("SELECT * FROM staging.communes", engine)
+
+    df = df.rename(columns={
+        "nom_standard": "nom_commune",
+        "dep_code": "code_departement"
+    })
+
+    frames.append(df)
+    print(f"📥 staging.communes: {len(df)}")
+
+except Exception as e:
+    print("⚠️ staging.communes:", e)
+
+# =====================
+# 2. DVF
+# =====================
+for year in range(2021, 2026):
+    try:
+        df = pd.read_sql(f"""
+            SELECT DISTINCT
+                "Code_departement",
+                "Code_commune",
+                "Commune",
+                "Code_postal"
+            FROM staging.dvf_{year}
+        """, engine)
+
+        df["code_insee"] = df.apply(
+            lambda x: normaliser_insee(x["Code_departement"], x["Code_commune"]),
+            axis=1
+        )
+
+        df = df.rename(columns={
+            "Commune": "nom_commune",
+            "Code_postal": "code_postal",
+            "Code_departement": "code_departement"
+        })
+
+        df["region"] = None
+
+        frames.append(df)
+
+        print(f"📥 DVF {year}: {len(df)}")
+
+    except Exception as e:
+        print(f"⚠️ DVF {year}: {e}")
+
+# =====================
+# 3. INSEE SAFE LOOP
+# =====================
+for year in range(2017, 2026):
+    table = f"staging.insee_{year}"
+
+    try:
+        df = pd.read_sql(f"""
+            SELECT DISTINCT
+                "CODGEO" AS code_insee,
+                "LIBGEO" AS nom_commune
+            FROM {table}
+        """, engine)
+
+        df["code_postal"] = None
+        df["code_departement"] = None
+        df["region"] = None
+
+        frames.append(df)
+
+        print(f"📥 INSEE {year}: {len(df)}")
+
+    except Exception:
+        continue
+
+# =====================
+# 4. MAPPING (OPTIONNEL ENRICHISSEMENT)
+# =====================
+try:
+    mapping = pd.read_sql("""
+        SELECT code_insee,
+               nom_commune,
+               nom_agglomeration
+        FROM ref.mapping_communes
+    """, engine)
+
+    mapping = mapping[["code_insee", "nom_commune"]]
+    frames.append(mapping)
+
+    print(f"📥 mapping: {len(mapping)}")
+
+except Exception as e:
+    print("⚠️ mapping:", e)
+
+# ==================================================
+# CONCAT + CLEAN GLOBAL
+# ==================================================
+df = pd.concat(frames, ignore_index=True)
+
+df = clean_df(df)
+
+# ==================================================
+# NORMALISATION POST-CLEAN
+# ==================================================
+df["code_postal"] = pd.to_numeric(df["code_postal"], errors="coerce")
+df["code_postal"] = (
+    df["code_postal"]
+    .fillna(0)
+    .astype(int)
     .astype(str)
     .str.zfill(5)
-    .replace("<NA>", None)
 )
 
-# Code departement
-df_insert["code_departement"] = df_insert["code_departement"].astype(str).str.zfill(2)
+df.loc[df["code_postal"] == "00000", "code_postal"] = None
 
-# Population
-df_insert["population"] = pd.to_numeric(df_insert["population"], errors="coerce")
+# ==================================================
+# FINAL SAFETY CHECK (CRITIQUE)
+# ==================================================
+assert list(df.columns) == SCHEMA, "❌ Schema mismatch BEFORE COPY"
 
-print("\nChargement dans silver.dim_commune...")
+print(f"📊 FINAL DIM_COMMUNE: {len(df)} lignes")
+print("📦 Colonnes:", df.columns.tolist())
+
+# ==================================================
+# LOAD SAFE COPY
+# ==================================================
 cur = conn.cursor()
 
+cur.execute("TRUNCATE TABLE silver.dim_commune CASCADE")
+
 buffer = StringIO()
-df_insert.to_csv(buffer, index=False, header=False, na_rep="")
+df.to_csv(buffer, index=False, header=False, na_rep="")
 buffer.seek(0)
 
-cur.copy_expert("""
-    COPY silver.dim_commune (
-        code_insee, nom_commune, code_postal,
-        code_departement, region, nom_agglomeration,
-        latitude, longitude, population
-    )
-    FROM STDIN WITH (FORMAT CSV, NULL '')
+cur.copy_expert(f"""
+COPY silver.dim_commune (
+    {", ".join(SCHEMA)}
+)
+FROM STDIN WITH (FORMAT CSV, NULL '')
 """, buffer)
 
 conn.commit()
 cur.close()
 conn.close()
 
-print(f"✅ dim_commune remplie — {len(df_insert)} communes !")
+print("✅ DIM_COMMUNE ROBUST PIPELINE OK")

@@ -21,16 +21,36 @@ conn = psycopg2.connect(
 )
 cur = conn.cursor()
 
-# Détecter automatiquement les types depuis staging DVF
-# On prend tous les types distincts présents dans les données
-print("Détection des types de biens depuis staging...")
-df_types = pd.read_sql("""
-    SELECT DISTINCT "Type_local" as type_bien
-    FROM staging.dvf_2024
-    WHERE "Type_local" IS NOT NULL
-""", engine)
+# Détecter automatiquement les années DVF depuis le dossier bronze
+print("Détection des années DVF disponibles...")
+dvf_dir = os.path.join(BASE_DIR, "data", "bronze", "dvf")
+annees = []
+if os.path.exists(dvf_dir):
+    for entry in os.listdir(dvf_dir):
+        if entry.startswith("annee="):
+            try:
+                annees.append(int(entry.split("=", 1)[1]))
+            except ValueError:
+                continue
 
-types = df_types["type_bien"].tolist()
+annees = sorted(annees)
+if not annees:
+    raise SystemExit("Aucune année DVF trouvée dans data/bronze/dvf. Vérifie les dossiers.")
+
+print(f"Années DVF détectées : {annees}")
+
+# Rassembler tous les types uniques sur toutes les années DVF
+all_types = set()
+for annee in annees:
+    print(f"Lecture des types depuis staging.dvf_{annee}...")
+    df_types = pd.read_sql(f"""
+        SELECT DISTINCT "Type_local" as type_bien
+        FROM staging.dvf_{annee}
+        WHERE "Type_local" IS NOT NULL
+    """, engine)
+    all_types.update(df_types["type_bien"].dropna().astype(str).tolist())
+
+types = sorted(all_types)
 print(f"Types détectés : {types}")
 
 for type_bien in types:

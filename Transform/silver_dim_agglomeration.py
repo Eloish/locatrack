@@ -1,50 +1,94 @@
 import os
 import pandas as pd
 import psycopg2
+from psycopg2.extras import execute_values
+from sqlalchemy import create_engine
 import yaml
 
+# =========================
+# CONFIG
+# =========================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config_path = os.path.join(BASE_DIR, "config.yml")
 
-with open(config_path) as f:
+with open(config_path, "r") as f:
     config = yaml.safe_load(f)
 
 db = config["database"]
-conn = psycopg2.connect(
-    host=db['host'], port=db['port'],
-    dbname=db['name'], user=db['user'],
-    password=db['password']
+
+engine = create_engine(
+    f"postgresql://{db['user']}:{db['password']}@{db['host']}:{db['port']}/{db['name']}"
 )
+
+conn = psycopg2.connect(
+    host=db["host"],
+    port=db["port"],
+    dbname=db["name"],
+    user=db["user"],
+    password=db["password"]
+)
+
 cur = conn.cursor()
 
-# Charger les loyers 2023 pour avoir le lien observatory_b → nom_agglomeration
-df_loyers = pd.read_parquet(
-    os.path.join(BASE_DIR, "data/bronze/loyers/annee=2023/loyers_2023.parquet")
-)
+# =========================
+# EXTRACTION
+# =========================
+annees_loyers = [2014, 2015, 2016, 2020, 2021, 2022, 2023, 2024, 2025]
 
-# Extraire les paires uniques observatory_b / nom_agglomeration
+all_agglo = []
+
+for annee in annees_loyers:
+    print(f"📥 Lecture staging.loyers_{annee}...")
+
+    query = f"""
+        SELECT DISTINCT agglomeration
+        FROM staging.loyers_{annee}
+        WHERE agglomeration IS NOT NULL
+    """
+
+    df = pd.read_sql(query, engine)
+    all_agglo.append(df)
+
+# =========================
+# VALIDATION
+# =========================
+if not all_agglo:
+    raise SystemExit("❌ Aucune donnée trouvée dans staging.loyers_*")
+
+df_agglo = pd.concat(all_agglo, ignore_index=True)
+
+# =========================
+# TRANSFORMATION
+# =========================
 df_agglo = (
-    df_loyers[["Observatory", "agglomeration"]]
+    df_agglo
+    .dropna()
     .drop_duplicates()
-    .rename(columns={
-        "Observatory": "observatory_b",
-        "agglomeration": "nom_agglomeration"
-    })
+    .rename(columns={"agglomeration": "nom_agglomeration"})
 )
 
-print(f"Agglomérations à insérer : {len(df_agglo)}")
-print(df_agglo)
+print(f"📊 Agglomérations uniques : {len(df_agglo)}")
+print(df_agglo.head(10))
 
-# Insérer dans dim_agglomeration
-for _, row in df_agglo.iterrows():
-    cur.execute("""
-        INSERT INTO silver.dim_agglomeration (nom_agglomeration, observatory_b)
-        VALUES (%s, %s)
-        ON CONFLICT (nom_agglomeration) DO NOTHING
-    """, (row["nom_agglomeration"], row["observatory_b"]))
+# =========================
+# LOAD (BATCH INSERT OPTIMISÉ)
+# =========================
+values = [(row,) for row in df_agglo["nom_agglomeration"]]
+
+insert_query = """
+    INSERT INTO silver.dim_agglomeration (nom_agglomeration)
+    VALUES %s
+    ON CONFLICT (nom_agglomeration) DO NOTHING
+"""
+
+execute_values(cur, insert_query, values)
 
 conn.commit()
+
+# =========================
+# CLEANUP
+# =========================
 cur.close()
 conn.close()
 
-print("\n✅ dim_agglomeration remplie !")
+print("✅ dim_agglomeration remplie avec succès !")
