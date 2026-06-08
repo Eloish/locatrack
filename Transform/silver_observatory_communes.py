@@ -48,8 +48,7 @@ print(f"📊 observatoires valides: {len(set_obs)}")
 # =====================
 mapping = pd.read_sql("""
     SELECT code_insee,
-           observatory_b,
-           nom_agglomeration
+           observatory_b
     FROM ref.mapping_communes
 """, engine)
 

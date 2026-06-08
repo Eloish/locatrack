@@ -33,7 +33,8 @@ CREATE TABLE silver.dim_observatoire (
 
 -- DIM AGGLOMERATION
 CREATE TABLE silver.dim_agglomeration (
-    nom_agglomeration VARCHAR(255) PRIMARY KEY
+    id_agglomeration SERIAL PRIMARY KEY,
+    nom_agglomeration VARCHAR(255) UNIQUE
 );
 
 -- DIM COMMUNE
@@ -62,15 +63,15 @@ CREATE TABLE silver.dim_type_bien (
 -- OBSERVATOIRE ↔ AGGLOMERATION (N-N)
 CREATE TABLE silver.bridge_observatoire_agglomeration (
     observatory_b      VARCHAR(10),
-    nom_agglomeration  VARCHAR(255),
+    id_agglomeration   INTEGER,
 
-    PRIMARY KEY (observatory_b, nom_agglomeration),
+    PRIMARY KEY (observatory_b, id_agglomeration),
 
     FOREIGN KEY (observatory_b)
         REFERENCES silver.dim_observatoire(observatory_b),
 
-    FOREIGN KEY (nom_agglomeration)
-        REFERENCES silver.dim_agglomeration(nom_agglomeration)
+    FOREIGN KEY (id_agglomeration)
+        REFERENCES silver.dim_agglomeration(id_agglomeration)
 );
 
 -- COMMUNE ↔ OBSERVATOIRE (N-N)
@@ -96,25 +97,19 @@ CREATE TABLE silver.fact_loyers
 (
     id SERIAL PRIMARY KEY,
 
-    observatory_b VARCHAR(10),
-    nom_agglomeration VARCHAR(255),
-
-    annee INTEGER,
+    observatory_b VARCHAR(10) NOT NULL,
+    annee INTEGER NOT NULL,
 
     type_habitat VARCHAR(100),
     nombre_pieces VARCHAR(50),
 
     loyer_median FLOAT,
-    
-    loyer_mensuel_median    FLOAT,
-    loyer_median_m2          FLOAT,
+    loyer_mensuel_median FLOAT,
+    loyer_median_m2 FLOAT,
     nombre_observations FLOAT,
 
     FOREIGN KEY (observatory_b)
         REFERENCES silver.dim_observatoire(observatory_b),
-
-    FOREIGN KEY (nom_agglomeration)
-        REFERENCES silver.dim_agglomeration(nom_agglomeration),
 
     FOREIGN KEY (annee)
         REFERENCES silver.dim_temps(annee)

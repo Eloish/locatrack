@@ -51,8 +51,7 @@ def extract_and_transform_revenus(engine):
 
     for annee, col_revenu in col_revenu_par_annee.items():
         print(f"  -> Traitement INSEE {annee} ({col_revenu})...")
-
-        # Requête SQL pour filtrer le secret statistique ('s') et les Nulls en amont
+        
         df_insee = pd.read_sql(f"""
             SELECT 
                 "CODGEO" as code_insee,

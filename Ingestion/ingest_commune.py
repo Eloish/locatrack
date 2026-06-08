@@ -15,7 +15,6 @@ with open(config_path) as f:
 url = config["communes"]["url"]
 bronze_dir = os.path.join(BASE_DIR, config["communes"]["bronze_dir"])
 
-
 def ingest_communes():
     output_path = f"{bronze_dir}/communes.parquet"
 

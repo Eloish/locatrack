@@ -163,8 +163,7 @@ for year in range(2017, 2026):
 try:
     mapping = pd.read_sql("""
         SELECT code_insee,
-               nom_commune,
-               nom_agglomeration
+               nom_commune
         FROM ref.mapping_communes
     """, engine)
 

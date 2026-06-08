@@ -1,4 +1,6 @@
 import os
+import re
+import unicodedata
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
@@ -8,6 +10,7 @@ import yaml
 # =========================
 # CONFIG
 # =========================
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config_path = os.path.join(BASE_DIR, "config.yml")
 
@@ -30,9 +33,29 @@ conn = psycopg2.connect(
 
 cur = conn.cursor()
 
+# nettoyage texte global (pour éviter les problèmes d'encodage)
+def clean_text(x):
+    if pd.isna(x):
+        return None
+
+    x = str(x)
+
+    # corrige les caractères cassés
+    x = x.encode("latin1", errors="ignore").decode("utf-8", errors="ignore")
+
+    # normalisation unicode
+    x = unicodedata.normalize("NFKC", x)
+
+    # nettoyage espaces
+    x = re.sub(r"\s+", " ", x)
+
+    return x.strip()
+
 # =========================
 # EXTRACTION
 # =========================
+
+
 annees_loyers = [2014, 2015, 2016, 2020, 2021, 2022, 2023, 2024, 2025]
 
 all_agglo = []
@@ -47,6 +70,7 @@ for annee in annees_loyers:
     """
 
     df = pd.read_sql(query, engine)
+    df["agglomeration"] = df["agglomeration"].apply(clean_text)
     all_agglo.append(df)
 
 # =========================

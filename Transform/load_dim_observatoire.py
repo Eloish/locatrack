@@ -1,16 +1,11 @@
-import os
 import pandas as pd
-import psycopg2
 from sqlalchemy import create_engine
 import yaml
+import os
 
-# =====================
-# CONFIG
-# =====================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-config_path = os.path.join(BASE_DIR, "config.yml")
 
-with open(config_path) as f:
+with open(os.path.join(BASE_DIR, "config.yml")) as f:
     config = yaml.safe_load(f)
 
 db = config["database"]
@@ -19,95 +14,54 @@ engine = create_engine(
     f"postgresql://{db['user']}:{db['password']}@{db['host']}:{db['port']}/{db['name']}"
 )
 
-conn = psycopg2.connect(
-    host=db['host'],
-    port=db['port'],
-    dbname=db['name'],
-    user=db['user'],
-    password=db['password']
-)
-
-cur = conn.cursor()
-
-# =====================
-# EXTRACTION OBSERVATOIRES
-# =====================
-annees = [2020, 2021, 2022, 2023, 2024, 2025]
+annees = [2014, 2015, 2016, 2020, 2021, 2022, 2023, 2024, 2025]
 
 dfs = []
 
 for annee in annees:
-    table = f"staging.loyers_{annee}"
-    print(f"📥 Lecture {table}...")
+    df = pd.read_sql(f"""
+        SELECT DISTINCT
+            TRIM(UPPER("Observatory")) AS observatory_b
+        FROM staging.loyers_{annee}
+        WHERE "Observatory" IS NOT NULL
+    """, engine)
 
-    try:
-        df = pd.read_sql(f"""
-            SELECT DISTINCT
-                TRIM(
-                    UPPER(
-                        REPLACE(REPLACE("Observatory", CHR(160), ''), '.0', '')
-                    )
-                ) AS observatory_b
-            FROM {table}
-            WHERE "Observatory" IS NOT NULL
-        """, engine)
+    dfs.append(df)
 
-        dfs.append(df)
+dim_obs = pd.concat(dfs, ignore_index=True)
 
-    except Exception as e:
-        print(f"⚠️ Erreur {table}: {e}")
-
-# =====================
-# CLEAN GLOBAL
-# =====================
-df_obs = pd.concat(dfs, ignore_index=True)
-
-df_obs["observatory_b"] = (
-    df_obs["observatory_b"]
-    .astype(str)
+# CLEAN FINAL (ULTRA IMPORTANT)
+dim_obs["observatory_b"] = (
+    dim_obs["observatory_b"]
+    .str.replace("\u00A0", "", regex=False)
+    .str.replace(".0", "", regex=False)
     .str.strip()
     .str.upper()
 )
 
-# suppression valeurs invalides
-df_obs = df_obs[df_obs["observatory_b"] != ""]
-df_obs = df_obs[df_obs["observatory_b"].notna()]
+dim_obs = dim_obs.drop_duplicates()
 
-# unique propre
-df_obs = df_obs.drop_duplicates(subset=["observatory_b"])
+print("📊 DIM OBS FINAL:", len(dim_obs))
 
-print(f"📊 Observatoires uniques finaux: {len(df_obs)}")
-print(sorted(df_obs["observatory_b"].tolist()))
+# LOAD DIM CLEAN RESET
+conn = engine.raw_connection()
+cur = conn.cursor()
 
-# =====================
-# (OPTION DEBUG) vérification cohérence
-# =====================
-df_check = pd.read_sql("""
-    SELECT DISTINCT observatory_b
-    FROM silver.dim_observatoire
-""", engine)
+cur.execute("TRUNCATE silver.dim_observatoire CASCADE")
 
-existing = set(df_check["observatory_b"])
-incoming = set(df_obs["observatory_b"])
+from io import StringIO
+buffer = StringIO()
 
-print("➕ Nouveaux:", incoming - existing)
-print("➖ Manquants:", existing - incoming)
+dim_obs.to_csv(buffer, index=False, header=False)
+buffer.seek(0)
 
-# =====================
-# INSERT SAFE
-# =====================
-sql = """
-INSERT INTO silver.dim_observatoire (observatory_b)
-VALUES (%s)
-ON CONFLICT (observatory_b) DO NOTHING;
-"""
-
-data = [(x,) for x in df_obs["observatory_b"].tolist()]
-
-cur.executemany(sql, data)
+cur.copy_expert("""
+    COPY silver.dim_observatoire (observatory_b)
+    FROM STDIN WITH (FORMAT CSV, NULL '')
+""", buffer)
 
 conn.commit()
 cur.close()
 conn.close()
 
-print("✅ dim_observatoire chargée proprement")
+print("✅ dim_observatoire RECONSTRUITE")
