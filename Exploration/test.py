@@ -1,4 +1,19 @@
-import pandas as pd
+from sqlalchemy import create_engine, text
+import yaml, os
 
-df = pd.read_csv("data/mapping_observatory_communes.csv", dtype=str)
-print(df.groupby("observatory_b")["code_insee"].count().sort_values(ascending=False).to_string())
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+with open(os.path.join(BASE_DIR, "config.yml")) as f:
+    config = yaml.safe_load(f)
+
+db = config["database"]
+engine = create_engine(
+    f"postgresql://{db['user']}:{db['password']}@"
+    f"{db['host']}:{db['port']}/{db['name']}"
+)
+
+with engine.connect() as conn:
+    conn.execute(text("DROP TABLE IF EXISTS staging.zonage_brut"))
+    conn.commit()
+
+print("✅ staging.zonage_brut supprimée")

@@ -118,3 +118,7 @@ else:
 
 if erreurs:
     print(f"⚠ Erreurs réseau : {erreurs}")
+for res in zips:
+    obs_code = extraire_obs_depuis_url(res.get("url", ""))
+    if obs_code in selectionnes:
+        print(obs_code, "|", res.get("title"))
