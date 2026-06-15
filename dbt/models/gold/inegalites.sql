@@ -19,37 +19,30 @@ WITH revenus_obs AS (
 
 loyers_obs AS (
     SELECT
-        observatory_b,
-        annee,
-        type_habitat,
-        AVG(loyer_mensuel_median) AS loyer_mensuel_moyen
-    FROM silver.fact_loyers
-    WHERE loyer_mensuel_median IS NOT NULL
-      AND type_habitat IS NOT NULL
-    GROUP BY observatory_b, annee, type_habitat
-),
-
-agglo AS (
-    SELECT
-        boa.observatory_b,
-        da.nom_agglomeration
-    FROM silver.bridge_observatoire_agglomeration boa
-    JOIN silver.dim_agglomeration da ON boa.id_agglomeration = da.id_agglomeration
+        fl.observatory_b,
+        fl.id_agglomeration,
+        fl.annee,
+        fl.type_habitat,
+        AVG(fl.loyer_mensuel_median) AS loyer_mensuel_moyen
+    FROM silver.fact_loyers fl
+    WHERE fl.loyer_mensuel_median IS NOT NULL
+      AND fl.type_habitat != 'Ensemble'
+    GROUP BY fl.observatory_b, fl.id_agglomeration, fl.annee, fl.type_habitat
 ),
 
 accessibilite AS (
     SELECT
         r.observatory_b,
-        a.nom_agglomeration,
+        da.nom_agglomeration,
         r.annee,
         l.type_habitat,
 
-        ROUND(r.revenu_d1::numeric, 2)            AS revenu_d1,
-        ROUND(r.revenu_median::numeric, 2)         AS revenu_median,
-        ROUND(r.revenu_d9::numeric, 2)            AS revenu_d9,
-        ROUND((r.revenu_d9 / NULLIF(r.revenu_d1, 0))::numeric, 2) AS ratio_d9_d1,
-        ROUND(r.revenu_median_moyen::numeric, 2)  AS revenu_median_moyen,
-        ROUND(l.loyer_mensuel_moyen::numeric, 2)  AS loyer_mensuel_moyen,
+        ROUND(r.revenu_d1::numeric, 2)                                          AS revenu_d1,
+        ROUND(r.revenu_median::numeric, 2)                                      AS revenu_median,
+        ROUND(r.revenu_d9::numeric, 2)                                          AS revenu_d9,
+        ROUND((r.revenu_d9 / NULLIF(r.revenu_d1, 0))::numeric, 2)              AS ratio_d9_d1,
+        ROUND(r.revenu_median_moyen::numeric, 2)                                AS revenu_median_moyen,
+        ROUND(l.loyer_mensuel_moyen::numeric, 2)                                AS loyer_mensuel_moyen,
 
         -- Taux d'effort par profil (loyer / revenu mensuel)
         ROUND((l.loyer_mensuel_moyen / NULLIF(r.revenu_d1 / 12, 0) * 100)::numeric, 1)
@@ -88,8 +81,8 @@ accessibilite AS (
         ) AS evolution_loyer_pct
 
     FROM revenus_obs r
-    JOIN loyers_obs l   ON r.observatory_b = l.observatory_b AND r.annee = l.annee
-    LEFT JOIN agglo a   ON r.observatory_b = a.observatory_b
+    JOIN loyers_obs l            ON r.observatory_b = l.observatory_b AND r.annee = l.annee
+    JOIN silver.dim_agglomeration da ON l.id_agglomeration = da.id_agglomeration
 )
 
 SELECT
@@ -112,19 +105,16 @@ SELECT
     loyer_annee_precedente,
     evolution_loyer_pct,
 
-    -- Classement accessibilité pour profil modeste (D1)
     RANK() OVER (
         PARTITION BY annee, type_habitat
         ORDER BY taux_effort_modeste_pct ASC
     ) AS rang_accessibilite_modeste,
 
-    -- Classement accessibilité pour profil médian
     RANK() OVER (
         PARTITION BY annee, type_habitat
         ORDER BY taux_effort_median_pct ASC
     ) AS rang_accessibilite_median,
 
-    -- Classement accessibilité pour profil aisé (D9)
     RANK() OVER (
         PARTITION BY annee, type_habitat
         ORDER BY taux_effort_aise_pct ASC
