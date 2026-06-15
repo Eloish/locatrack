@@ -66,7 +66,7 @@ def construire_mapping(dossier: str) -> pd.DataFrame:
             if df is None: continue
 
             # --- LISTES ÉTENDUES DE CANDIDATS ---
-            col_insee = trouver_colonne(df, ["INSEE", "INSEE_COM", "Commune", "COD_COM", "CODE_INSEE", "CODE INSEE", "L6a", "L6A", "code_insee", "code_iris"])
+            col_insee = trouver_colonne(df, ["INSEE", "INSEE_COM", "Commune", "COD_COM", "CODE_INSEE", "CODE INSEE","CODE_INSEE", "L6a", "L6A", "code_insee", "code_iris"])
             col_libcom = trouver_colonne(df, ["Lib_com", "LIB_COM", "Libelle", "NOM_COM", "nom_com", "LIBCOM", "Libcom", "NOM_COMMUNE"])
             col_zone = trouver_colonne(df, ["Zone", "ZONE", "zone", "num_zone", "LIBZONE", "LIB_ZONE"])
             col_libzone = trouver_colonne(df, ["Lib_zone", "LIB_ZONE", "lib_zone", "libelle_zone", "LIB_IRIS"])

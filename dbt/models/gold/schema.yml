@@ -1,0 +1,152 @@
+version: 2
+
+models:
+
+  # ─────────────────────────────────────────────
+  # PRIX M2 PAR VILLE
+  # ─────────────────────────────────────────────
+  - name: prix_m2_par_ville
+    description: >
+      Prix au m² médian et moyen par commune, année et type de bien.
+      Inclut LAG année précédente et moving average sur 3 ans.
+    columns:
+      - name: code_insee
+        description: Code INSEE de la commune
+        data_tests:
+          - not_null
+      - name: nom_commune
+        description: Nom de la commune
+        data_tests:
+          - not_null
+      - name: annee
+        description: Année de la transaction
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [2021, 2022, 2023, 2024, 2025]
+      - name: type_local
+        description: Type de bien (Appartement, Maison, etc.)
+        data_tests:
+          - not_null
+      - name: prix_m2_median
+        description: Prix médian au m²
+        data_tests:
+          - not_null
+      - name: nb_transactions
+        description: Nombre de transactions
+        data_tests:
+          - not_null
+
+  # ─────────────────────────────────────────────
+  # RATIO LOYER / REVENU
+  # ─────────────────────────────────────────────
+  - name: ratio_loyer_revenu
+    description: >
+      Ratio loyer mensuel médian / revenu mensuel moyen par observatoire,
+      année et type de logement. Indicateur principal de tension locative.
+    columns:
+      - name: observatory_b
+        description: Code de l'observatoire local des loyers
+        data_tests:
+          - not_null
+      - name: annee
+        description: Année
+        data_tests:
+          - not_null
+      - name: type_habitat
+        description: Type de logement
+        data_tests:
+          - not_null
+      - name: ratio_tension_pct
+        description: Ratio loyer/revenu en pourcentage (seuil critique = 33%)
+        data_tests:
+          - not_null
+
+  # ─────────────────────────────────────────────
+  # DYNAMISME MARCHÉ (Score de tension composite)
+  # ─────────────────────────────────────────────
+  - name: dynamisme_marche
+    description: >
+      Score de tension locative composite (0-100) combinant ratio loyer/revenu,
+      hausse des prix et volume de transactions.
+    columns:
+      - name: code_insee
+        description: Code INSEE de la commune
+        data_tests:
+          - not_null
+      - name: annee
+        description: Année
+        data_tests:
+          - not_null
+      - name: type_local
+        description: Type de bien
+        data_tests:
+          - not_null
+      - name: score_tension
+        description: Score composite de tension (0 = détendu, 100 = très tendu)
+        data_tests:
+          - not_null
+      - name: categorie_tension
+        description: Catégorie lisible du score
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['Très tendu', 'Tendu', 'Modéré', 'Détendu']
+
+  # ─────────────────────────────────────────────
+  # ÉVOLUTION TENSION
+  # ─────────────────────────────────────────────
+  - name: evolution_tension
+    description: >
+      Évolution annuelle du ratio loyer/revenu par observatoire.
+      Utilise LAG pour comparer avec l'année précédente.
+    columns:
+      - name: observatory_b
+        description: Code observatoire
+        data_tests:
+          - not_null
+      - name: annee
+        description: Année
+        data_tests:
+          - not_null
+      - name: ratio_tension_pct
+        description: Ratio tension de l'année courante
+        data_tests:
+          - not_null
+
+  # ─────────────────────────────────────────────
+  # INÉGALITÉS / ACCESSIBILITÉ PAR PROFIL
+  # ─────────────────────────────────────────────
+  - name: inegalites
+    description: >
+      Accessibilité locative par profil socioprofessionnel (modeste D1, médian, aisé D9).
+      Inclut classement RANK des villes par accessibilité.
+    columns:
+      - name: observatory_b
+        description: Code observatoire
+        data_tests:
+          - not_null
+      - name: annee
+        description: Année
+        data_tests:
+          - not_null
+      - name: type_habitat
+        description: Type de logement
+        data_tests:
+          - not_null
+      - name: taux_effort_modeste_pct
+        description: Taux d'effort pour profil modeste (D1) en %
+        data_tests:
+          - not_null
+      - name: taux_effort_median_pct
+        description: Taux d'effort pour profil médian en %
+        data_tests:
+          - not_null
+      - name: rang_accessibilite_modeste
+        description: Classement de la ville pour le profil modeste (1 = plus accessible)
+        data_tests:
+          - not_null
+      - name: rang_accessibilite_median
+        description: Classement de la ville pour le profil médian
+        data_tests:
+          - not_null
