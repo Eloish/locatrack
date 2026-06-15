@@ -1,142 +1,83 @@
-import os
-import re
-import unicodedata
-import pandas as pd
-import psycopg2
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
-from sqlalchemy import create_engine
-import yaml
-
-# =========================
-# CONFIG
-# =========================
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-with open(os.path.join(BASE_DIR, "config.yml")) as f:
-    config = yaml.safe_load(f)
-
-db = config["database"]
-
-engine = create_engine(
-    f"postgresql://{db['user']}:{db['password']}@"
-    f"{db['host']}:{db['port']}/{db['name']}"
-)
-
-conn = psycopg2.connect(
-    host=db["host"],
-    port=db["port"],
-    dbname=db["name"],
-    user=db["user"],
-    password=db["password"]
-)
-
-cur = conn.cursor()
-
-# =========================
-# CLEAN FUNCTION UNIQUE (IMPORTANT)
-# =========================
-def clean_text(x):
-    if pd.isna(x):
-        return None
-
-    x = str(x)
-
-    x = x.encode("latin1", errors="ignore").decode("utf-8", errors="ignore")
-    x = unicodedata.normalize("NFKC", x)
-
-    x = re.sub(r"\s+", " ", x)
-
-    return x.strip()
+import pandas as pd
+from utils.config import load_config
+from utils.db import get_engine, get_conn
+from utils.geography import clean_text, clean_obs_code
 
 
+def extract_agglo_obs(engine, years: list) -> pd.DataFrame:
+    frames = []
+    for annee in years:
+        df = pd.read_sql(f"""
+            SELECT DISTINCT
+                TRIM(UPPER("Observatory")) AS observatory_b,
+                TRIM("agglomeration") AS nom_agglomeration
+            FROM staging.loyers_{annee}
+            WHERE "Observatory" IS NOT NULL
+              AND agglomeration IS NOT NULL
+        """, engine)
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-# =========================
-# LOAD DIM AGGLO
-# =========================
-dim_aglo = pd.read_sql("""
-    SELECT id_agglomeration, nom_agglomeration
-    FROM silver.dim_agglomeration
-""", engine)
 
-dim_aglo["nom_agglomeration"] = dim_aglo["nom_agglomeration"].apply(clean_text)
+def load_dim_agglomeration(engine) -> pd.DataFrame:
+    df = pd.read_sql("SELECT id_agglomeration, nom_agglomeration FROM silver.dim_agglomeration", engine)
+    df["nom_agglomeration"] = df["nom_agglomeration"].apply(clean_text)
+    return df
 
-# =========================
-# LOAD STAGING LOYERS
-# =========================
-annees = [2014, 2015, 2016, 2020, 2021, 2022, 2023, 2024, 2025]
 
-dfs = []
+def transform_bridge_agglo(df: pd.DataFrame, dim_agglo: pd.DataFrame) -> pd.DataFrame:
+    df["observatory_b"] = df["observatory_b"].apply(clean_obs_code)
+    df["nom_agglomeration"] = df["nom_agglomeration"].apply(clean_text)
+    df = df.drop_duplicates()
 
-for annee in annees:
-    
+    df_bridge = df.merge(dim_agglo, on="nom_agglomeration", how="left")
+    df_bridge = df_bridge.replace({np.nan: None})
+    df_bridge = df_bridge.dropna(subset=["id_agglomeration"])
+    df_bridge["id_agglomeration"] = df_bridge["id_agglomeration"].astype(int)
+    return df_bridge[["observatory_b", "id_agglomeration"]]
 
-    df = pd.read_sql(f"""
-        SELECT DISTINCT
-            TRIM(UPPER("Observatory")) AS observatory_b,
-            TRIM("agglomeration") AS nom_agglomeration
-        FROM staging.loyers_{annee}
-        WHERE "Observatory" IS NOT NULL
-          AND agglomeration IS NOT NULL
-    """, engine)
 
-    dfs.append(df)
+def load_bridge_agglo(df: pd.DataFrame, conn):
+    cur = conn.cursor()
+    try:
+        cur.executemany("""
+            INSERT INTO silver.bridge_observatoire_agglomeration (observatory_b, id_agglomeration)
+            VALUES (%s, %s) ON CONFLICT DO NOTHING
+        """, list(df.itertuples(index=False, name=None)))
+        conn.commit()
+        print(f"[BRIDGE_AGGLO_OBS] {len(df)} relations insérées")
+    except Exception as e:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
 
-df = pd.concat(dfs, ignore_index=True)
 
-# =========================
-# CLEAN STAGING
-# =========================
-df["observatory_b"] = (
-    df["observatory_b"]
-    .str.replace("\u00A0", "", regex=False)
-    .str.replace(".0", "", regex=False)
-    .str.strip()
-    .str.upper()
-)
-df["nom_agglomeration"] = df["nom_agglomeration"].apply(clean_text)
+def run_silver_agglo_observatory():
+    config = load_config()
+    years = sorted(
+        set(list(config["loyers"]["fichiers_parquet"].keys()) +
+            list(config["loyers"]["fichiers_csv"].keys()))
+    )
+    engine = get_engine()
+    conn = get_conn()
 
-df = df.drop_duplicates()
+    print("[BRIDGE_AGGLO_OBS] Extraction...")
+    df = extract_agglo_obs(engine, years)
 
-# =========================
-# JOIN (CORE LOGIC)
-# =========================
-df_bridge = df.merge(dim_aglo, on="nom_agglomeration", how="left")
+    print("[BRIDGE_AGGLO_OBS] Chargement dim_agglomeration...")
+    dim_agglo = load_dim_agglomeration(engine)
 
-# =========================
-# DEBUG
-# =========================
-print("\n📊 STATISTIQUES")
-print("Total lignes:", len(df_bridge))
-print("Observatoires uniques:", df_bridge["observatory_b"].nunique())
-print("NULL agglomeration:", df_bridge["id_agglomeration"].isna().sum())
+    print("[BRIDGE_AGGLO_OBS] Transformation...")
+    df_bridge = transform_bridge_agglo(df, dim_agglo)
+    print(f"[BRIDGE_AGGLO_OBS] {len(df_bridge)} relations | {df_bridge['observatory_b'].nunique()} observatoires")
 
-# =========================
-# CLEAN FINAL SAFE INSERT
-# =========================
-df_bridge = df_bridge.replace({np.nan: None})
-df_bridge = df_bridge.dropna(subset=["id_agglomeration"])
-df_bridge["id_agglomeration"] = df_bridge["id_agglomeration"].astype(int)
+    print("[BRIDGE_AGGLO_OBS] Chargement...")
+    load_bridge_agglo(df_bridge, conn)
+    conn.close()
 
-# =========================
-# INSERT
-# =========================
-sql = """
-INSERT INTO silver.bridge_observatoire_agglomeration (
-    observatory_b,
-    id_agglomeration
-)
-VALUES (%s, %s)
-ON CONFLICT DO NOTHING;
-"""
 
-cur.executemany(
-    sql,
-    list(df_bridge[["observatory_b", "id_agglomeration"]]
-         .itertuples(index=False, name=None))
-)
-
-conn.commit()
-cur.close()
-conn.close()
-
-print("\n✅ Bridge chargé avec succès")
+if __name__ == "__main__":
+    run_silver_agglo_observatory()

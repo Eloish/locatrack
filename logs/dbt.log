@@ -1,77 +1,14 @@
-==================== 2026-06-09T00:04:36.672990Z | 019ea9b2-049e-7d90-95a5-794fb2c137bc ====================
-00:04:36.676772 [info ]: Installing dbt project and profile setup
-00:04:36.773145 [info ]: Info Created .vscode/extensions.json with dbt extension recommendation
-00:04:36.778609 [info ]: Success Project created successfully!
-00:04:36.779193 [info ]: Info Project name: jaffle_shop
-00:04:36.779999 [info ]: Info Project directory: jaffle_shop
-00:04:36.780847 [info ]: Info Setting up your profile...
-00:04:36.785586 [info ]: Info Creating new profile...
-00:04:47.332626 [info ]: No dbt_cloud.yml found - proceeding without cloud pre-population
-==================== 2026-06-09T00:05:05.142443Z | 019ea9b2-73f3-7ad2-b1cd-124336d7502d ====================
-00:05:05.142682 [info ]: Installing dbt project and profile setup
-00:05:05.148469 [info ]: Warning Directory 'jaffle_shop' already exists, using 'jaffle_shop_1' instead
-00:05:05.207506 [info ]: Info Created .vscode/extensions.json with dbt extension recommendation
-00:05:05.207936 [info ]: Success Project created successfully!
-00:05:05.208401 [info ]: Info Project name: jaffle_shop_1
-00:05:05.208795 [info ]: Info Project directory: jaffle_shop_1
-00:05:05.209167 [info ]: Info Setting up your profile...
-00:05:05.209540 [info ]: Info Creating new profile...
-00:05:08.416384 [info ]: No dbt_cloud.yml found - proceeding without cloud pre-population
-00:05:46.691244 [info ]: Success Profile written to C:\Users\ishimwe elodie\.dbt\profiles.yml
-00:05:46.693469 [info ]: Validating profile inputs, adapters, and connection
-
-00:05:46.694032 [info ]: dbt-core 2.0.0-alpha.1
-00:05:46.707388 [info ]: Started loading project
-00:05:46.755931 [info ]: Loading ~/.dbt/profiles.yml
-00:05:46.771790 [info ]: Finished loading project [  0.06s]
-00:05:46.775171 [error]: [InvalidConfig (dbt1005)]: The 'postgres' adapter is not yet supported by dbt Fusion. Supported adapters: snowflake, bigquery, databricks, redshift
-00:05:46.860897 [info ]: 
-==================== Execution Summary =====================
-Finished 'init' with 1 error [41.7s]
-[0m02:08:39.403699 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000025A76A75550>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000025A79698F50>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000025A79699090>]}
+[0m01:55:27.370528 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000027E2BEE9550>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000027E2EB0CF50>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000027E2EB0D090>]}
 
 
-============================== 02:08:39.412602 | f92a9d59-5e92-4b09-a19e-7b949cddf87b ==============================
-[0m02:08:39.412602 [info ] [MainThread]: Running with dbt=1.8.0
-[0m02:08:39.413802 [debug] [MainThread]: running dbt with arguments {'printer_width': '80', 'indirect_selection': 'eager', 'write_json': 'True', 'log_cache_events': 'False', 'partial_parse': 'True', 'cache_selected_only': 'False', 'profiles_dir': 'C:\\Users\\ishimwe elodie\\.dbt', 'fail_fast': 'False', 'version_check': 'True', 'log_path': 'logs', 'debug': 'False', 'warn_error': 'None', 'use_colors': 'True', 'use_experimental_parser': 'False', 'no_print': 'None', 'quiet': 'False', 'log_format': 'default', 'invocation_command': 'dbt init', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'introspect': 'True', 'target_path': 'None', 'static_parser': 'True', 'send_anonymous_usage_stats': 'True'}
-[0m02:08:47.251636 [debug] [MainThread]: Starter project path: C:\Users\ishimwe elodie\Desktop\Luminy\TP\Ter\locatrack\.venv\Lib\site-packages\dbt\include\starter_project
-[0m02:08:47.306802 [info ] [MainThread]: 
-Your new dbt project "locatrack" was created!
-
-For more information on how to configure the profiles.yml file,
-please consult the dbt documentation here:
-
-  https://docs.getdbt.com/docs/configure-your-profile
-
-One more thing:
-
-Need help? Don't hesitate to reach out to us via GitHub issues or on Slack:
-
-  https://community.getdbt.com/
-
-Happy modeling!
-
-[0m02:08:47.307901 [info ] [MainThread]: Setting up your profile.
-[0m02:09:44.624644 [info ] [MainThread]: Profile locatrack written to C:\Users\ishimwe elodie\.dbt\profiles.yml using target's profile_template.yml and your supplied values. Run 'dbt debug' to validate the connection.
-[0m02:09:44.626161 [debug] [MainThread]: Command `dbt init` succeeded at 02:09:44.625971 after 65.59 seconds
-[0m02:09:44.626643 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000025A7ABB96E0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000025A7A8960F0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000025A7A87ECF0>]}
-[0m02:09:44.627078 [debug] [MainThread]: Flushing usage events
-[0m02:10:32.121091 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001D43D925550>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001D44053CF50>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001D44053D090>]}
-
-
-============================== 02:10:32.129238 | ea05bd22-7038-4b13-b9b4-d9fd2ce7821e ==============================
-[0m02:10:32.129238 [info ] [MainThread]: Running with dbt=1.8.0
-[0m02:10:32.130625 [debug] [MainThread]: running dbt with arguments {'printer_width': '80', 'indirect_selection': 'eager', 'log_cache_events': 'False', 'write_json': 'True', 'partial_parse': 'True', 'cache_selected_only': 'False', 'profiles_dir': 'C:\\Users\\ishimwe elodie\\.dbt', 'fail_fast': 'False', 'version_check': 'True', 'log_path': 'logs', 'debug': 'False', 'warn_error': 'None', 'use_colors': 'True', 'use_experimental_parser': 'False', 'no_print': 'None', 'quiet': 'False', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'introspect': 'True', 'invocation_command': 'dbt debug', 'static_parser': 'True', 'target_path': 'None', 'log_format': 'default', 'send_anonymous_usage_stats': 'True'}
-[0m02:10:32.207939 [info ] [MainThread]: dbt version: 1.8.0
-[0m02:10:32.208698 [info ] [MainThread]: python version: 3.13.1
-[0m02:10:32.209595 [info ] [MainThread]: python path: C:\Users\ishimwe elodie\Desktop\Luminy\TP\Ter\locatrack\.venv\Scripts\python.exe
-[0m02:10:32.210206 [info ] [MainThread]: os info: Windows-11-10.0.26200-SP0
-[0m02:10:32.356119 [info ] [MainThread]: Using profiles dir at C:\Users\ishimwe elodie\.dbt
-[0m02:10:32.357386 [info ] [MainThread]: Using profiles.yml file at C:\Users\ishimwe elodie\.dbt\profiles.yml
-[0m02:10:32.358605 [info ] [MainThread]: Using dbt_project.yml file at C:\Users\ishimwe elodie\Desktop\Luminy\TP\Ter\locatrack\dbt_project.yml
-[0m02:10:32.359801 [error] [MainThread]: Encountered an error:
-Internal Error
-  Profile should not be None if loading profile completed
-[0m02:10:32.361823 [debug] [MainThread]: Command `dbt debug` failed at 02:10:32.361525 after 0.57 seconds
-[0m02:10:32.362553 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001D44178E3F0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001D4419AE7B0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x000001D4419BD9D0>]}
-[0m02:10:32.363300 [debug] [MainThread]: Flushing usage events
+============================== 01:55:27.393714 | e2c2773c-c9f4-4520-8967-416574d5a1f4 ==============================
+[0m01:55:27.393714 [info ] [MainThread]: Running with dbt=1.8.0
+[0m01:55:27.396934 [debug] [MainThread]: running dbt with arguments {'printer_width': '80', 'indirect_selection': 'eager', 'write_json': 'True', 'log_cache_events': 'False', 'partial_parse': 'True', 'cache_selected_only': 'False', 'warn_error': 'None', 'fail_fast': 'False', 'profiles_dir': 'C:\\Users\\ishimwe elodie\\.dbt', 'log_path': 'logs', 'debug': 'False', 'version_check': 'True', 'use_colors': 'True', 'use_experimental_parser': 'False', 'no_print': 'None', 'quiet': 'False', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'invocation_command': 'dbt run --select dynamisme_marche', 'static_parser': 'True', 'introspect': 'True', 'target_path': 'None', 'log_format': 'default', 'send_anonymous_usage_stats': 'True'}
+[0m01:55:27.398607 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path C:\Users\ishimwe elodie\Desktop\Luminy\TP\Ter\locatrack\dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m01:55:27.401535 [debug] [MainThread]: Command `dbt run` failed at 01:55:27.401174 after 0.52 seconds
+[0m01:55:27.402551 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000027E2ECADE00>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000027E2EB6DC70>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x0000027E2FCD05A0>]}
+[0m01:55:27.403721 [debug] [MainThread]: Flushing usage events
