@@ -2,7 +2,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from utils.config import load_config
 
 _engine = None
@@ -19,4 +19,5 @@ def get_engine():
 
 
 def query(sql: str) -> pd.DataFrame:
-    return pd.read_sql(sql, get_engine())
+    with get_engine().connect() as conn:
+        return pd.read_sql(text(sql), conn)

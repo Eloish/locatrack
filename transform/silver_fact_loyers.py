@@ -54,6 +54,13 @@ def load_agglomeration_mapping(engine) -> dict:
 def transform_fact_loyers(df: pd.DataFrame, agglo_mapping: dict) -> pd.DataFrame:
     df["observatory_b"] = df["observatory_b"].apply(clean_obs_code)
 
+    # Normaliser nombre_pieces : "4P et plus" → "4P+"
+    df["nombre_pieces"] = (
+        df["nombre_pieces"]
+        .str.replace(r"\s*et\s+plus\s*$", "+", regex=True)
+        .str.strip()
+    )
+
     # Jointure avec dim_agglomeration via le nom
     df["id_agglomeration"] = df["nom_agglomeration"].str.strip().map(agglo_mapping)
 

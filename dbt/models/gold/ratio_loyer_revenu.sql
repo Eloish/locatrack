@@ -11,7 +11,6 @@ WITH loyers AS (
         AVG(fl.loyer_mensuel_median) AS loyer_mensuel_median
     FROM silver.fact_loyers fl
     WHERE fl.loyer_median_m2 IS NOT NULL
-      AND fl.type_habitat != 'Ensemble'
     GROUP BY fl.observatory_b, fl.id_agglomeration, fl.annee, fl.type_habitat, fl.nombre_pieces
 ),
 

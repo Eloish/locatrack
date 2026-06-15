@@ -9,154 +9,147 @@ st.set_page_config(page_title="Recherche de ville", page_icon="🔍", layout="wi
 st.title("🔍 Trouver la ville la plus accessible")
 
 st.info(
-    "Les loyers affichés sont des **médianes globales** (tous types et toutes tailles confondus) "
-    "calculées par observatoire local des loyers. "
-    "Le taux d'effort = loyer mensuel / revenu mensuel — seuil recommandé : 33%."
+    "Entrez votre revenu mensuel pour voir le taux d'effort de chaque commune. "
+    "Le **taux d'effort (vous)** = loyer / votre revenu. "
+    "En dessous de **33%** = accessible. Entre 33% et 50% = tendu. Au-dessus de 50% = difficile."
 )
 
-# ── Filtres ──────────────────────────────────────────────
-col1, col2, col3 = st.columns(3)
+# ── Filtres ──────────────────────────────────────────────────────────────────
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
-    budget = st.number_input("Budget loyer mensuel (€)", min_value=300, max_value=3000, value=800, step=50)
+    revenu = st.number_input("Revenu mensuel (€)", min_value=500, max_value=10000, value=2000, step=100)
 with col2:
-    departement = st.text_input("Département (code)", placeholder="Ex: 75, 69, 13...")
+    type_habitat = st.selectbox("Type de logement", ["Appartement", "Maison"])
 with col3:
+    nb_pieces = st.selectbox("Nombre de pièces", ["Tous", "1P", "2P", "3P", "4P+"])
+with col4:
+    departement = st.text_input("Département (code)", placeholder="Ex: 75, 69, 13...")
+with col5:
     st.markdown("<br>", unsafe_allow_html=True)
     rechercher = st.button("🔍 Rechercher", use_container_width=True)
 
 if rechercher:
-    dep_filter_commune = f"AND dc.code_departement = '{departement.strip()}'" if departement.strip() else ""
-    dep_filter_agglo   = f"""AND fl.observatory_b IN (
-        SELECT bco.observatory_b FROM silver.bridge_commune_observatoire bco
-        JOIN silver.dim_commune dc2 ON bco.code_insee = dc2.code_insee
-        WHERE dc2.code_departement = '{departement.strip()}'
-    )""" if departement.strip() else ""
+    # Filtre nombre_pieces — deux versions : sans alias (CTE) et avec alias rlr
+    if nb_pieces == "Tous":
+        pieces_filter_cte = "AND nombre_pieces = 'Tous'"
+        pieces_filter     = "AND rlr.nombre_pieces = 'Tous'"
+    else:
+        pieces_filter_cte = f"AND nombre_pieces ILIKE '%%{nb_pieces}%%'"
+        pieces_filter     = f"AND rlr.nombre_pieces ILIKE '%%{nb_pieces}%%'"
 
-    # ── Tableau communes (Ensemble + Tous = un loyer global par observatoire) ──
-    # On garde l'agglomération avec le plus d'observations pour éviter les doublons
-    df_commune = query(f"""
+    dep_filter = f"AND dc.code_departement = '{departement.strip()}'" if departement.strip() else ""
+
+    df = query(f"""
         WITH derniere_annee AS (
-            SELECT observatory_b, MAX(annee) AS max_annee
-            FROM silver.fact_loyers
-            WHERE type_habitat = 'Ensemble' AND nombre_pieces = 'Tous'
-            GROUP BY observatory_b
+            SELECT observatory_b, nom_agglomeration, type_habitat, nombre_pieces,
+                   MAX(annee) AS max_annee
+            FROM gold.ratio_loyer_revenu
+            WHERE type_habitat = '{type_habitat}'
+              {pieces_filter_cte}
+            GROUP BY observatory_b, nom_agglomeration, type_habitat, nombre_pieces
         ),
-        loyer_principal AS (
-            SELECT DISTINCT ON (fl.observatory_b)
-                fl.observatory_b,
-                fl.loyer_mensuel_median,
-                fl.nombre_observations,
-                da.max_annee
-            FROM silver.fact_loyers fl
-            JOIN derniere_annee da ON fl.observatory_b = da.observatory_b
-                                  AND fl.annee = da.max_annee
-            WHERE fl.type_habitat = 'Ensemble'
-              AND fl.nombre_pieces = 'Tous'
-              AND fl.loyer_mensuel_median IS NOT NULL
-            ORDER BY fl.observatory_b, fl.nombre_observations DESC NULLS LAST
+        loyers_recents AS (
+            SELECT rlr.observatory_b, rlr.nom_agglomeration, rlr.annee,
+                   rlr.type_habitat, rlr.nombre_pieces,
+                   rlr.loyer_mensuel_median, rlr.revenu_mensuel_moyen,
+                   rlr.ratio_tension_pct
+            FROM gold.ratio_loyer_revenu rlr
+            JOIN derniere_annee da
+                ON  rlr.observatory_b    = da.observatory_b
+                AND rlr.nom_agglomeration = da.nom_agglomeration
+                AND rlr.type_habitat      = da.type_habitat
+                AND rlr.nombre_pieces     = da.nombre_pieces
+                AND rlr.annee             = da.max_annee
+            {pieces_filter}
         )
         SELECT
             dc.nom_commune,
             dc.code_departement,
-            lp.observatory_b,
-            lp.max_annee                                                         AS annee_donnees,
-            ROUND(lp.loyer_mensuel_median::numeric, 0)                           AS loyer_median,
-            ROUND(AVG(fr.revenu_median)::numeric, 0)                             AS revenu_moyen,
-            ROUND(
-                (lp.loyer_mensuel_median / NULLIF(AVG(fr.revenu_median) / 12, 0) * 100)::numeric, 1
-            )                                                                    AS taux_effort_pct
-        FROM loyer_principal lp
-        JOIN silver.bridge_commune_observatoire bco ON lp.observatory_b = bco.observatory_b
-        JOIN silver.dim_commune dc                  ON bco.code_insee = dc.code_insee
-        LEFT JOIN silver.fact_revenus fr            ON dc.code_insee = fr.code_insee
-          AND fr.annee = (SELECT MAX(annee) FROM silver.fact_revenus)
-        WHERE lp.loyer_mensuel_median <= {budget}
-          {dep_filter_commune}
-        GROUP BY dc.nom_commune, dc.code_departement, lp.observatory_b,
-                 lp.max_annee, lp.loyer_mensuel_median
-        ORDER BY loyer_median ASC
+            dc.reg,
+            lr.nom_agglomeration,
+            lr.annee                                                   AS annee_donnees,
+            ROUND(lr.loyer_mensuel_median::numeric, 0)                 AS loyer_median,
+            ROUND(lr.revenu_mensuel_moyen::numeric, 0)                 AS revenu_local,
+            ROUND(lr.ratio_tension_pct::numeric, 1)                    AS taux_effort_local,
+            ROUND((lr.loyer_mensuel_median / {revenu} * 100)::numeric, 1) AS taux_effort_vous
+        FROM loyers_recents lr
+        JOIN silver.dim_agglomeration da  ON da.nom_agglomeration = lr.nom_agglomeration
+        JOIN silver.mapping_uu_agglomeration mua
+                ON mua.observatory_b    = lr.observatory_b
+               AND mua.id_agglomeration = da.id_agglomeration
+        JOIN silver.dim_commune dc ON dc.uu2020 = mua.uu2020
+        {dep_filter}
+        ORDER BY lr.loyer_mensuel_median ASC
     """)
 
-    # ── Tableau agglomérations (même logique Ensemble + Tous) ──
-    df_agglo = query(f"""
-        WITH derniere_annee AS (
-            SELECT observatory_b, id_agglomeration, MAX(annee) AS max_annee
-            FROM silver.fact_loyers
-            WHERE type_habitat = 'Ensemble' AND nombre_pieces = 'Tous'
-            GROUP BY observatory_b, id_agglomeration
+    st.session_state["df_recherche"] = df
+    st.session_state["recherche_params"] = {
+        "revenu": revenu, "type_habitat": type_habitat, "nb_pieces": nb_pieces,
+    }
+
+# ── Affichage ─────────────────────────────────────────────────────────────────
+if "df_recherche" in st.session_state:
+    df     = st.session_state["df_recherche"]
+    params = st.session_state.get("recherche_params", {})
+
+    col_a, col_b = st.columns([3, 1])
+    with col_a:
+        filtre_texte = st.text_input(
+            "Filtrer par commune ou agglomération",
+            placeholder="Ex: Lyon, Bordeaux, Aix..."
         )
-        SELECT
-            da.nom_agglomeration,
-            fl.observatory_b,
-            da2.max_annee                                AS annee_donnees,
-            ROUND(fl.loyer_mensuel_median::numeric, 0)   AS loyer_median,
-            fl.nombre_observations
-        FROM silver.fact_loyers fl
-        JOIN derniere_annee da2      ON fl.observatory_b = da2.observatory_b
-                                    AND fl.id_agglomeration = da2.id_agglomeration
-                                    AND fl.annee = da2.max_annee
-        JOIN silver.dim_agglomeration da ON fl.id_agglomeration = da.id_agglomeration
-        WHERE fl.type_habitat = 'Ensemble'
-          AND fl.nombre_pieces = 'Tous'
-          AND fl.loyer_mensuel_median IS NOT NULL
-          AND fl.loyer_mensuel_median <= {budget}
-          {dep_filter_agglo}
-        ORDER BY loyer_median ASC
-    """)
-
-    st.session_state["df_commune"] = df_commune
-    st.session_state["df_agglo"]   = df_agglo
-
-# ── Affichage ─────────────────────────────────────────────
-if "df_commune" in st.session_state:
-    df_commune = st.session_state["df_commune"]
-    df_agglo   = st.session_state["df_agglo"]
-
-    recherche = st.text_input("🔎 Filtrer par nom", placeholder="Ex: Lyon, Bordeaux...")
+    with col_b:
+        st.metric("Communes trouvées", len(df))
 
     st.markdown("---")
 
-    # ── Tableau communes EN PREMIER ──
-    st.subheader(f"Par commune — {len(df_commune)} résultat(s)")
-    st.caption("Loyer médian global (tous types et tailles confondus) de l'observatoire couvrant la commune.")
-
-    if df_commune.empty:
-        st.warning("Aucune commune trouvée pour ce budget.")
+    if df.empty:
+        st.warning(
+            f"Aucune commune accessible avec un revenu de {params.get('revenu', '')} € "
+            f"pour un revenu de {params.get('revenu', '')} €."
+        )
     else:
-        df_commune["Loyer médian"]  = df_commune["loyer_median"].apply(lambda x: f"{x:,.0f} €")
-        df_commune["Revenu moyen"]  = df_commune["revenu_moyen"].apply(lambda x: f"{x:,.0f} €" if pd.notna(x) else "N/A")
-        df_commune["Taux d'effort"] = df_commune["taux_effort_pct"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+        if filtre_texte:
+            import unicodedata
+            def norm(s):
+                return unicodedata.normalize("NFD", str(s)).encode("ascii", "ignore").decode().lower()
+            q = norm(filtre_texte)
+            mask = (
+                df["nom_commune"].apply(norm).str.contains(q, na=False) |
+                df["nom_agglomeration"].apply(norm).str.contains(q, na=False)
+            )
+            df = df[mask]
 
-        df_c = df_commune[df_commune["nom_commune"].str.contains(recherche, case=False, na=False)] if recherche else df_commune
         st.dataframe(
-            df_c[["nom_commune", "code_departement", "Loyer médian", "Revenu moyen", "Taux d'effort", "annee_donnees"]],
-            use_container_width=True, hide_index=True,
+            df[[
+                "nom_commune", "code_departement", "nom_agglomeration",
+                "loyer_median", "taux_effort_vous", "taux_effort_local",
+                "revenu_local", "annee_donnees"
+            ]],
+            use_container_width=True,
+            hide_index=True,
             column_config={
-                "nom_commune":      "Commune",
-                "code_departement": "Dép.",
-                "annee_donnees":    "Année données",
+                "nom_commune":       st.column_config.TextColumn("Commune"),
+                "code_departement":  st.column_config.TextColumn("Dép."),
+                "nom_agglomeration": st.column_config.TextColumn("Agglomération"),
+                "loyer_median":      st.column_config.NumberColumn("Loyer médian", format="%d €"),
+                "taux_effort_vous":  st.column_config.ProgressColumn(
+                    "Taux effort (vous)",
+                    format="%.1f%%",
+                    min_value=0, max_value=100,
+                ),
+                "taux_effort_local": st.column_config.ProgressColumn(
+                    "Taux effort (local)",
+                    format="%.1f%%",
+                    min_value=0, max_value=100,
+                ),
+                "revenu_local":      st.column_config.NumberColumn("Revenu local", format="%d €"),
+                "annee_donnees":     st.column_config.NumberColumn("Année", format="%d"),
             }
         )
-        st.caption("Taux d'effort = loyer mensuel / revenu mensuel. Seuil recommandé : 33%.")
 
-    st.markdown("---")
-
-    # ── Tableau agglomérations EN SECOND ──
-    st.subheader(f"Par agglomération — {len(df_agglo)} résultat(s)")
-    st.caption("Vue synthétique par zone. Un observatoire peut couvrir plusieurs agglomérations.")
-
-    if df_agglo.empty:
-        st.warning("Aucune agglomération trouvée pour ce budget.")
-    else:
-        df_agglo["Loyer médian"] = df_agglo["loyer_median"].apply(lambda x: f"{x:,.0f} €")
-
-        df_a = df_agglo[df_agglo["nom_agglomeration"].str.contains(recherche, case=False, na=False)] if recherche else df_agglo
-        st.dataframe(
-            df_a[["nom_agglomeration", "observatory_b", "Loyer médian", "annee_donnees"]],
-            use_container_width=True, hide_index=True,
-            column_config={
-                "nom_agglomeration": "Agglomération",
-                "observatory_b":     "Observatoire",
-                "annee_donnees":     "Année données",
-            }
+        st.caption(
+            "**Taux effort (vous)** = loyer / votre revenu. "
+            "**Taux effort (local)** = loyer / revenu médian de la population locale. "
+            "🟢 < 33% accessible  🟡 33–50% tendu  🔴 > 50% difficile"
         )

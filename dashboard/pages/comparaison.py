@@ -2,127 +2,264 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import pandas as pd
-from db import get_engine, query
+from db import query
 
-st.set_page_config(page_title="Comparaison de villes", page_icon="⚖️", layout="wide")
-st.title("⚖️ Comparaison de villes")
-st.markdown("Comparez deux villes sur leurs indicateurs immobiliers.")
+st.set_page_config(page_title="Comparaison", page_icon="⚖️", layout="wide")
+st.title("⚖️ Comparer des territoires")
 
-@st.cache_data
-def get_villes(type_local: str):
-    return query(f"""
-        SELECT DISTINCT nom_commune, code_insee
-        FROM gold.prix_m2_par_ville
-        WHERE type_local = '{type_local}'
-          AND nb_transactions >= 10
-        ORDER BY nom_commune
-    """)
+onglet_loyers, onglet_marche = st.tabs(["Loyers & revenus", "Marché immobilier"])
 
-@st.cache_data
-def get_data_ville(code_insee: str):
-    return query(f"""
-        SELECT annee, type_local, prix_m2_median, prix_m2_moyen,
-               nb_transactions, evolution_annuelle_pct, moving_avg_3ans
-        FROM gold.prix_m2_par_ville
-        WHERE code_insee = '{code_insee}'
-        ORDER BY annee, type_local
-    """)
+# ══════════════════════════════════════════════════════════════════════════════
+# ONGLET 1 — Loyers & revenus (gold.ratio_loyer_revenu + gold.inegalites)
+# ══════════════════════════════════════════════════════════════════════════════
+with onglet_loyers:
+    @st.cache_data(ttl=300)
+    def load_agglos():
+        return query("""
+            SELECT DISTINCT nom_agglomeration
+            FROM gold.ratio_loyer_revenu
+            ORDER BY nom_agglomeration
+        """)["nom_agglomeration"].tolist()
 
-@st.cache_data
-def get_tension_ville(code_insee: str):
-    return query(f"""
-        SELECT annee, type_local, score_tension, categorie_tension, hausse_prix_pct
-        FROM gold.dynamisme_marche
-        WHERE code_insee = '{code_insee}'
-        ORDER BY annee, type_local
-    """)
+    agglos_dispo = load_agglos()
 
-col1, col2, col3 = st.columns([2, 2, 1])
-with col3:
-    type_bien = st.selectbox("Type de bien", ["Appartement", "Maison"])
+    col1, col2, col3 = st.columns([3, 1, 1])
+    with col1:
+        selection = st.multiselect(
+            "Agglomérations à comparer (2 à 8)",
+            options=agglos_dispo,
+            default=agglos_dispo[:4] if len(agglos_dispo) >= 4 else agglos_dispo,
+            max_selections=8,
+            key="sel_agglos",
+        )
+    with col2:
+        type_habitat = st.selectbox("Type logement", ["Appartement", "Maison"], key="th_loyers")
+    with col3:
+        profil = st.selectbox(
+            "Profil revenu", ["Médian", "Modeste (D1)", "Aisé (D9)"], key="profil"
+        )
 
-villes = get_villes(type_bien)
-liste_villes = villes["nom_commune"].tolist()
+    if len(selection) < 2:
+        st.warning("Sélectionnez au moins 2 agglomérations.")
+    else:
+        agglos_sql = "', '".join(a.replace("'", "''") for a in selection)
+        taux_col = {
+            "Médian":       "taux_effort_median_pct",
+            "Modeste (D1)": "taux_effort_modeste_pct",
+            "Aisé (D9)":    "taux_effort_aise_pct",
+        }[profil]
 
-with col1:
-    ville1_nom = st.selectbox("Ville 1", liste_villes, index=liste_villes.index("Paris") if "Paris" in liste_villes else 0)
-with col2:
-    ville2_nom = st.selectbox("Ville 2", liste_villes, index=liste_villes.index("Marseille") if "Marseille" in liste_villes else 1)
+        df_ratio = query(f"""
+            WITH derniere AS (
+                SELECT nom_agglomeration, MAX(annee) AS max_annee
+                FROM gold.ratio_loyer_revenu
+                WHERE nom_agglomeration IN ('{agglos_sql}')
+                  AND type_habitat = '{type_habitat}' AND nombre_pieces = 'Tous'
+                GROUP BY nom_agglomeration
+            )
+            SELECT rlr.nom_agglomeration, rlr.annee,
+                   rlr.loyer_mensuel_median, rlr.revenu_mensuel_moyen, rlr.ratio_tension_pct
+            FROM gold.ratio_loyer_revenu rlr
+            JOIN derniere d ON rlr.nom_agglomeration = d.nom_agglomeration AND rlr.annee = d.max_annee
+            WHERE rlr.type_habitat = '{type_habitat}' AND rlr.nombre_pieces = 'Tous'
+            ORDER BY rlr.loyer_mensuel_median ASC
+        """)
 
-ville1_insee = villes[villes["nom_commune"] == ville1_nom]["code_insee"].values[0]
-ville2_insee = villes[villes["nom_commune"] == ville2_nom]["code_insee"].values[0]
+        df_ineg = query(f"""
+            WITH derniere AS (
+                SELECT nom_agglomeration, MAX(annee) AS max_annee
+                FROM gold.inegalites
+                WHERE nom_agglomeration IN ('{agglos_sql}')
+                  AND type_habitat = '{type_habitat}'
+                GROUP BY nom_agglomeration
+            )
+            SELECT i.nom_agglomeration, i.revenu_d1, i.revenu_median, i.revenu_d9,
+                   i.taux_effort_modeste_pct, i.taux_effort_median_pct, i.taux_effort_aise_pct,
+                   i.evolution_loyer_pct, i.evolution_revenu_pct
+            FROM gold.inegalites i
+            JOIN derniere d ON i.nom_agglomeration = d.nom_agglomeration AND i.annee = d.max_annee
+            WHERE i.type_habitat = '{type_habitat}'
+        """)
 
-df1 = get_data_ville(ville1_insee)
-df2 = get_data_ville(ville2_insee)
-t1  = get_tension_ville(ville1_insee)
-t2  = get_tension_ville(ville2_insee)
+        df_evol = query(f"""
+            SELECT nom_agglomeration, annee, loyer_mensuel_median, ratio_tension_pct
+            FROM gold.ratio_loyer_revenu
+            WHERE nom_agglomeration IN ('{agglos_sql}')
+              AND type_habitat = '{type_habitat}' AND nombre_pieces = 'Tous'
+            ORDER BY nom_agglomeration, annee
+        """)
 
-df1_f = df1[df1["type_local"] == type_bien]
-df2_f = df2[df2["type_local"] == type_bien]
-t1_f  = t1[t1["type_local"] == type_bien]
-t2_f  = t2[t2["type_local"] == type_bien]
+        # Métriques synthèse
+        st.markdown("### Synthèse — dernière année disponible")
+        cols_m = st.columns(len(df_ratio))
+        for i, (_, row) in enumerate(df_ratio.iterrows()):
+            with cols_m[i]:
+                st.metric(
+                    label=row["nom_agglomeration"][:28],
+                    value=f"{row['loyer_mensuel_median']:,.0f} €/mois",
+                    delta=f"Taux effort : {row['ratio_tension_pct']:.1f}%",
+                    delta_color="inverse",
+                )
 
-def get_last(df, col):
-    if df.empty or col not in df.columns: return None
-    val = df.sort_values("annee").iloc[-1][col]
-    return val if pd.notna(val) else None
+        st.markdown("---")
+        col_g1, col_g2 = st.columns(2)
 
-st.markdown("---")
-st.subheader("Indicateurs – dernière année disponible")
+        with col_g1:
+            st.subheader("Loyer mensuel médian")
+            fig1 = px.bar(
+                df_ratio, x="nom_agglomeration", y="loyer_mensuel_median",
+                color="nom_agglomeration", text_auto=True,
+                labels={"loyer_mensuel_median": "Loyer (€/mois)", "nom_agglomeration": ""},
+            )
+            fig1.update_layout(showlegend=False, height=360, xaxis_tickangle=-30)
+            st.plotly_chart(fig1, use_container_width=True)
 
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.metric(f"Prix m² – {ville1_nom}", f"{get_last(df1_f, 'prix_m2_median'):,.0f} €" if get_last(df1_f, 'prix_m2_median') else "N/A")
-    st.metric(f"Prix m² – {ville2_nom}", f"{get_last(df2_f, 'prix_m2_median'):,.0f} €" if get_last(df2_f, 'prix_m2_median') else "N/A")
-with c2:
-    v1 = get_last(df1_f, 'evolution_annuelle_pct')
-    v2 = get_last(df2_f, 'evolution_annuelle_pct')
-    st.metric(f"Évolution – {ville1_nom}", f"{v1:+.1f}%" if v1 else "N/A")
-    st.metric(f"Évolution – {ville2_nom}", f"{v2:+.1f}%" if v2 else "N/A")
-with c3:
-    v1 = get_last(t1_f, 'score_tension')
-    v2 = get_last(t2_f, 'score_tension')
-    st.metric(f"Score tension – {ville1_nom}", f"{v1:.1f}/100" if v1 else "N/A")
-    st.metric(f"Score tension – {ville2_nom}", f"{v2:.1f}/100" if v2 else "N/A")
-with c4:
-    v1 = get_last(df1_f, 'nb_transactions')
-    v2 = get_last(df2_f, 'nb_transactions')
-    st.metric(f"Transactions – {ville1_nom}", f"{int(v1):,}" if v1 else "N/A")
-    st.metric(f"Transactions – {ville2_nom}", f"{int(v2):,}" if v2 else "N/A")
+        with col_g2:
+            st.subheader(f"Taux d'effort — profil {profil}")
+            if not df_ineg.empty:
+                fig2 = px.bar(
+                    df_ineg.sort_values(taux_col),
+                    x="nom_agglomeration", y=taux_col,
+                    color="nom_agglomeration", text_auto=True,
+                    labels={taux_col: "Taux d'effort (%)", "nom_agglomeration": ""},
+                )
+                fig2.add_hline(y=33, line_dash="dash", line_color="red",
+                               annotation_text="Seuil 33%")
+                fig2.update_layout(showlegend=False, height=360, xaxis_tickangle=-30)
+                st.plotly_chart(fig2, use_container_width=True)
 
-st.markdown("---")
-st.subheader("Évolution du prix au m²")
+        # Évolution temporelle
+        st.markdown("---")
+        st.subheader("Évolution du loyer dans le temps")
+        fig3 = px.line(
+            df_evol, x="annee", y="loyer_mensuel_median",
+            color="nom_agglomeration", markers=True,
+            labels={"loyer_mensuel_median": "Loyer médian (€/mois)",
+                    "annee": "Année", "nom_agglomeration": "Agglomération"},
+        )
+        fig3.update_layout(height=380)
+        st.plotly_chart(fig3, use_container_width=True)
 
-if not df1_f.empty and not df2_f.empty:
-    df1_plot = df1_f.copy(); df1_plot["ville"] = ville1_nom
-    df2_plot = df2_f.copy(); df2_plot["ville"] = ville2_nom
+        # Tableau détaillé
+        if not df_ineg.empty:
+            st.markdown("---")
+            st.subheader("Tableau comparatif détaillé")
+            df_t = df_ineg.rename(columns={
+                "nom_agglomeration":        "Agglomération",
+                "revenu_d1":                "Revenu D1 (€)",
+                "revenu_median":            "Revenu médian (€)",
+                "revenu_d9":                "Revenu D9 (€)",
+                "taux_effort_modeste_pct":  "Taux effort modeste",
+                "taux_effort_median_pct":   "Taux effort médian",
+                "taux_effort_aise_pct":     "Taux effort aisé",
+                "evolution_loyer_pct":      "Évol. loyer %",
+                "evolution_revenu_pct":     "Évol. revenu %",
+            })
+            st.dataframe(df_t, use_container_width=True, hide_index=True)
 
-    fig = go.Figure()
-    for nom, df_v in [(ville1_nom, df1_plot), (ville2_nom, df2_plot)]:
-        fig.add_trace(go.Scatter(x=df_v["annee"], y=df_v["prix_m2_median"],
-            name=f"{nom} – médian", mode="lines+markers", line=dict(width=2)))
-        fig.add_trace(go.Scatter(x=df_v["annee"], y=df_v["moving_avg_3ans"],
-            name=f"{nom} – moy. mobile 3 ans", mode="lines", line=dict(dash="dot", width=1)))
 
-    fig.update_layout(xaxis_title="Année", yaxis_title="Prix m² (€)",
-        hovermode="x unified", height=400, legend=dict(orientation="h", y=-0.25))
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Données insuffisantes pour ce type de bien.")
+# ══════════════════════════════════════════════════════════════════════════════
+# ONGLET 2 — Marché immobilier (gold.prix_m2_par_ville + gold.dynamisme_marche)
+# ══════════════════════════════════════════════════════════════════════════════
+with onglet_marche:
+    @st.cache_data(ttl=300)
+    def load_villes(type_bien):
+        return query(f"""
+            SELECT DISTINCT nom_commune, code_insee
+            FROM gold.prix_m2_par_ville
+            WHERE type_local = '{type_bien}' AND nb_transactions >= 10
+            ORDER BY nom_commune
+        """)
 
-st.markdown("---")
-st.subheader("Score de tension locative")
+    col_m1, col_m2, col_m3 = st.columns([2, 2, 1])
+    with col_m3:
+        type_bien = st.selectbox("Type de bien", ["Appartement", "Maison"], key="tb_marche")
 
-if not t1_f.empty and not t2_f.empty:
-    t1_plot = t1_f.copy(); t1_plot["ville"] = ville1_nom
-    t2_plot = t2_f.copy(); t2_plot["ville"] = ville2_nom
-    tension = pd.concat([t1_plot, t2_plot])
+    villes = load_villes(type_bien)
+    liste  = villes["nom_commune"].tolist()
+    def idx(nom): return liste.index(nom) if nom in liste else 0
 
-    fig2 = px.bar(tension, x="annee", y="score_tension", color="ville",
-        barmode="group", color_discrete_sequence=["#636EFA", "#EF553B"],
-        labels={"score_tension": "Score (0-100)", "annee": "Année"})
-    fig2.update_layout(height=350)
-    st.plotly_chart(fig2, use_container_width=True)
+    with col_m1:
+        v1_nom = st.selectbox("Ville 1", liste, index=idx("Paris"), key="v1")
+    with col_m2:
+        v2_nom = st.selectbox("Ville 2", liste, index=idx("Marseille"), key="v2")
+
+    v1_insee = villes[villes["nom_commune"] == v1_nom]["code_insee"].values[0]
+    v2_insee = villes[villes["nom_commune"] == v2_nom]["code_insee"].values[0]
+
+    @st.cache_data(ttl=300)
+    def get_prix(code):
+        return query(f"""
+            SELECT annee, prix_m2_median, prix_m2_moyen, nb_transactions,
+                   evolution_annuelle_pct, moving_avg_3ans
+            FROM gold.prix_m2_par_ville
+            WHERE code_insee = '{code}' AND type_local = '{type_bien}'
+            ORDER BY annee
+        """)
+
+    @st.cache_data(ttl=300)
+    def get_tension(code):
+        return query(f"""
+            SELECT annee, score_tension, categorie_tension, hausse_prix_pct
+            FROM gold.dynamisme_marche
+            WHERE code_insee = '{code}' AND type_local = '{type_bien}'
+            ORDER BY annee
+        """)
+
+    df1 = get_prix(v1_insee)
+    df2 = get_prix(v2_insee)
+    t1  = get_tension(v1_insee)
+    t2  = get_tension(v2_insee)
+
+    def last(df, col):
+        if df.empty or col not in df.columns: return None
+        v = df.sort_values("annee").iloc[-1][col]
+        return v if pd.notna(v) else None
+
+    st.markdown("### Indicateurs — dernière année")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric(f"Prix m² {v1_nom}", f"{last(df1,'prix_m2_median'):,.0f} €" if last(df1,'prix_m2_median') else "N/A")
+        st.metric(f"Prix m² {v2_nom}", f"{last(df2,'prix_m2_median'):,.0f} €" if last(df2,'prix_m2_median') else "N/A")
+    with c2:
+        st.metric(f"Évolution {v1_nom}", f"{last(df1,'evolution_annuelle_pct'):+.1f}%" if last(df1,'evolution_annuelle_pct') else "N/A")
+        st.metric(f"Évolution {v2_nom}", f"{last(df2,'evolution_annuelle_pct'):+.1f}%" if last(df2,'evolution_annuelle_pct') else "N/A")
+    with c3:
+        st.metric(f"Score tension {v1_nom}", f"{last(t1,'score_tension'):.1f}/100" if last(t1,'score_tension') else "N/A")
+        st.metric(f"Score tension {v2_nom}", f"{last(t2,'score_tension'):.1f}/100" if last(t2,'score_tension') else "N/A")
+    with c4:
+        st.metric(f"Transactions {v1_nom}", f"{int(last(df1,'nb_transactions')):,}" if last(df1,'nb_transactions') else "N/A")
+        st.metric(f"Transactions {v2_nom}", f"{int(last(df2,'nb_transactions')):,}" if last(df2,'nb_transactions') else "N/A")
+
+    st.markdown("---")
+    st.subheader("Évolution du prix au m²")
+
+    fig_m = go.Figure()
+    for nom, df_v in [(v1_nom, df1), (v2_nom, df2)]:
+        if not df_v.empty:
+            fig_m.add_trace(go.Scatter(
+                x=df_v["annee"], y=df_v["prix_m2_median"],
+                name=f"{nom} — médian", mode="lines+markers", line=dict(width=2)))
+            fig_m.add_trace(go.Scatter(
+                x=df_v["annee"], y=df_v["moving_avg_3ans"],
+                name=f"{nom} — moy. 3 ans", mode="lines", line=dict(dash="dot", width=1)))
+    fig_m.update_layout(xaxis_title="Année", yaxis_title="Prix m² (€)",
+                        hovermode="x unified", height=400,
+                        legend=dict(orientation="h", y=-0.3))
+    st.plotly_chart(fig_m, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Score de tension locative")
+    if not t1.empty and not t2.empty:
+        t1p = t1.copy(); t1p["ville"] = v1_nom
+        t2p = t2.copy(); t2p["ville"] = v2_nom
+        fig_t = px.bar(
+            pd.concat([t1p, t2p]), x="annee", y="score_tension",
+            color="ville", barmode="group",
+            labels={"score_tension": "Score (0-100)", "annee": "Année"},
+        )
+        fig_t.update_layout(height=350)
+        st.plotly_chart(fig_t, use_container_width=True)

@@ -26,47 +26,102 @@ with col3:
         "score_tension",
         "prix_m2_moyen",
         "hausse_prix_pct",
+        "taux_effort_median",
+        "taux_effort_modeste",
     ], format_func=lambda x: {
-        "score_tension":   "Score de tension (0-100)",
-        "prix_m2_moyen":   "Prix au m² moyen (€)",
-        "hausse_prix_pct": "Hausse des prix (%)",
+        "score_tension":      "Score de tension (0-100)",
+        "prix_m2_moyen":      "Prix au m² moyen (€)",
+        "hausse_prix_pct":    "Hausse des prix (%)",
+        "taux_effort_median": "Taux d'effort — profil médian (%)",
+        "taux_effort_modeste":"Taux d'effort — profil modeste (%)",
     }[x])
 with col4:
-    # Filtre région grâce à dim_commune.reg enrichi par INSEE
+    REG_NOMS = {
+        "11": "Île-de-France",
+        "24": "Centre-Val de Loire",
+        "27": "Bourgogne-Franche-Comté",
+        "28": "Normandie",
+        "32": "Hauts-de-France",
+        "44": "Grand Est",
+        "52": "Pays de la Loire",
+        "53": "Bretagne",
+        "75": "Nouvelle-Aquitaine",
+        "76": "Occitanie",
+        "84": "Auvergne-Rhône-Alpes",
+        "93": "Provence-Alpes-Côte d'Azur",
+        "94": "Corse",
+    }
     regions = query("""
-        SELECT DISTINCT dc.reg, MIN(dc.nom_commune) AS exemple
+        SELECT DISTINCT dc.reg
         FROM silver.dim_commune dc
         WHERE dc.reg IS NOT NULL
-        GROUP BY dc.reg
         ORDER BY dc.reg
     """)
-    region_options = ["Toutes"] + regions["reg"].tolist()
-    region = st.selectbox("Région (code)", region_options)
+    reg_codes = regions["reg"].tolist()
+    reg_labels = {c: REG_NOMS.get(c, f"Région {c}") for c in reg_codes}
+    region_options = ["Toutes"] + reg_codes
+    region = st.selectbox(
+        "Région",
+        region_options,
+        format_func=lambda c: "Toutes" if c == "Toutes" else reg_labels.get(c, c),
+    )
 
 # ── Requête ────────────────────────────────────────────────────────────────
 filtre_type   = f"AND gd.type_local = '{type_bien}'" if type_bien != "Tous" else ""
 filtre_region = f"AND dc.reg = '{region}'" if region != "Toutes" else ""
 
-df = query(f"""
-    SELECT
-        gd.code_insee,
-        gd.nom_commune,
-        gd.code_departement,
-        gd.type_local,
-        ROUND(gd.score_tension::numeric, 1)    AS score_tension,
-        ROUND(gd.prix_m2_moyen::numeric, 0)    AS prix_m2_moyen,
-        ROUND(gd.hausse_prix_pct::numeric, 1)  AS hausse_prix_pct,
-        gd.nb_transactions,
-        gd.categorie_tension,
-        dc.reg
-    FROM gold.dynamisme_marche gd
-    JOIN silver.dim_commune dc ON gd.code_insee = dc.code_insee
-    WHERE gd.annee = {annee}
-      AND gd.{indicateur} IS NOT NULL
-      {filtre_type}
-      {filtre_region}
-    ORDER BY gd.{indicateur} DESC
-""")
+# Les indicateurs taux_effort viennent de gold.inegalites (niveau agglomération)
+# Les autres viennent de gold.dynamisme_marche (niveau commune)
+indicateurs_ineg = {"taux_effort_median", "taux_effort_modeste"}
+
+if indicateur in indicateurs_ineg:
+    col_ineg = {
+        "taux_effort_median":  "taux_effort_median_pct",
+        "taux_effort_modeste": "taux_effort_modeste_pct",
+    }[indicateur]
+    type_hab = "Appartement" if type_bien != "Tous" else "Appartement"
+    df = query(f"""
+        WITH derniere AS (
+            SELECT nom_agglomeration, MAX(annee) AS max_annee
+            FROM gold.inegalites
+            WHERE type_habitat = '{type_hab}'
+            GROUP BY nom_agglomeration
+        ),
+        ineg AS (
+            SELECT i.nom_agglomeration, i.{col_ineg} AS valeur_indicateur
+            FROM gold.inegalites i
+            JOIN derniere d ON i.nom_agglomeration = d.nom_agglomeration AND i.annee = d.max_annee
+            WHERE i.type_habitat = '{type_hab}'
+        )
+        SELECT
+            dc.code_insee, dc.nom_commune, dc.code_departement, dc.reg,
+            da.nom_agglomeration,
+            ROUND(ing.valeur_indicateur::numeric, 1) AS {indicateur}
+        FROM silver.dim_commune dc
+        JOIN silver.mapping_uu_agglomeration mua ON dc.uu2020 = mua.uu2020
+        JOIN silver.dim_agglomeration da ON mua.id_agglomeration = da.id_agglomeration
+        JOIN ineg ing ON ing.nom_agglomeration = da.nom_agglomeration
+        WHERE ing.valeur_indicateur IS NOT NULL
+          {filtre_region}
+        ORDER BY ing.valeur_indicateur DESC
+    """)
+else:
+    df = query(f"""
+        SELECT
+            gd.code_insee, gd.nom_commune, gd.code_departement,
+            gd.type_local,
+            ROUND(gd.score_tension::numeric, 1)   AS score_tension,
+            ROUND(gd.prix_m2_moyen::numeric, 0)   AS prix_m2_moyen,
+            ROUND(gd.hausse_prix_pct::numeric, 1) AS hausse_prix_pct,
+            gd.nb_transactions, gd.categorie_tension, dc.reg
+        FROM gold.dynamisme_marche gd
+        JOIN silver.dim_commune dc ON gd.code_insee = dc.code_insee
+        WHERE gd.annee = {annee}
+          AND gd.{indicateur} IS NOT NULL
+          {filtre_type}
+          {filtre_region}
+        ORDER BY gd.{indicateur} DESC
+    """)
 
 if df.empty:
     st.warning("Aucune donnée pour ces filtres.")
@@ -88,9 +143,11 @@ def load_geojson():
 geojson = load_geojson()
 
 label = {
-    "score_tension":   "Score tension",
-    "prix_m2_moyen":   "Prix m² (€)",
-    "hausse_prix_pct": "Hausse prix (%)",
+    "score_tension":      "Score tension",
+    "prix_m2_moyen":      "Prix m² (€)",
+    "hausse_prix_pct":    "Hausse prix (%)",
+    "taux_effort_median": "Taux effort médian (%)",
+    "taux_effort_modeste":"Taux effort modeste (%)",
 }[indicateur]
 
 fig = px.choropleth(
