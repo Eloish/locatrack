@@ -34,6 +34,10 @@ insee:
 communes:
   url: "https://www.data.gouv.fr/api/1/datasets/r/f5df602b-3800-44d7-b2df-fa40a0350325"
   bronze_dir: "data/bronze/communes"
+
+ref_geo:
+  bronze_dir: "data/bronze/ref_geo"
+  table_appartenance_url: "https://www.data.gouv.fr/api/1/datasets/r/0a8db89a-9bdc-41a7-9f5b-caeb5b97a0d4"
 database:
   host: localhost
   port: 5432
