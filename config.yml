@@ -37,7 +37,7 @@ communes:
 
 ref_geo:
   bronze_dir: "data/bronze/ref_geo"
-  table_appartenance_url: "https://www.data.gouv.fr/api/1/datasets/r/0a8db89a-9bdc-41a7-9f5b-caeb5b97a0d4"
+  table_appartenance_url: "https://www.insee.fr/fr/statistiques/fichier/7671844/table-appartenance-geo-communes-2025.zip"
 database:
   host: localhost
   port: 5432
