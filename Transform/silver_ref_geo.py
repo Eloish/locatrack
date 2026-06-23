@@ -158,29 +158,6 @@ def build_mapping_uu_agglomeration(engine, conn):
         print("[REF_GEO] Aucun mapping UU <-> agglomération construit (bridge vide)")
         return
 
-    # Overrides manuels
-    override_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data", "referentiel", "mapping_uu_agglomeration_override.csv"
-    )
-    if os.path.exists(override_path):
-        overrides = pd.read_csv(override_path)
-        overrides = overrides[overrides["nom_agglomeration_correct"].notna()]
-        # Résoudre le bon id_agglomeration depuis dim_agglomeration par le nom
-        agglo_name_to_id = df_agglo.set_index("nom_agglomeration")["id_agglomeration"].to_dict()
-        for _, ov in overrides.iterrows():
-            nom_correct = ov["nom_agglomeration_correct"]
-            id_correct = agglo_name_to_id.get(nom_correct)
-            if id_correct is None:
-                print(f"[REF_GEO] Override ignoré {ov['observatory_b']} : '{nom_correct}' non trouvé dans dim_agglomeration")
-                continue
-            mask = (df_mapping["observatory_b"] == ov["observatory_b"])
-            if mask.any():
-                df_mapping.loc[mask, "id_agglomeration"]  = int(id_correct)
-                df_mapping.loc[mask, "nom_agglomeration"] = nom_correct
-                df_mapping.loc[mask, "score_fuzzy"]       = 100.0
-                print(f"[REF_GEO] Override {ov['observatory_b']} -> {nom_correct}")
-
     ambigus = df_mapping[df_mapping["score_fuzzy"] < 70]
     if not ambigus.empty:
         print(f"[REF_GEO] {len(ambigus)} cas ambigus (score < 70) :")
