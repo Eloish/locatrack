@@ -56,29 +56,39 @@ accessibilite AS (
         ROUND((l.loyer_mensuel_moyen * 12 / NULLIF(r.revenu_median_moyen, 0) * 100)::numeric, 2)
             AS part_loyer_annuel_pct,
 
-        -- Évolution revenus avec LAG
+        -- Évolution revenus avec LAG (NULL si gap > 1 an)
         LAG(r.revenu_median_moyen) OVER (
             PARTITION BY r.observatory_b ORDER BY r.annee
         ) AS revenu_annee_precedente,
-        ROUND(
-            ((r.revenu_median_moyen - LAG(r.revenu_median_moyen) OVER (
+        CASE
+            WHEN r.annee - LAG(r.annee) OVER (
                 PARTITION BY r.observatory_b ORDER BY r.annee
-            )) / NULLIF(LAG(r.revenu_median_moyen) OVER (
-                PARTITION BY r.observatory_b ORDER BY r.annee
-            ), 0) * 100)::numeric, 2
-        ) AS evolution_revenu_pct,
+            ) > 1 THEN NULL
+            ELSE ROUND(
+                ((r.revenu_median_moyen - LAG(r.revenu_median_moyen) OVER (
+                    PARTITION BY r.observatory_b ORDER BY r.annee
+                )) / NULLIF(LAG(r.revenu_median_moyen) OVER (
+                    PARTITION BY r.observatory_b ORDER BY r.annee
+                ), 0) * 100)::numeric, 2
+            )
+        END AS evolution_revenu_pct,
 
-        -- Évolution loyers avec LAG
+        -- Évolution loyers avec LAG (NULL si gap > 1 an)
         LAG(l.loyer_mensuel_moyen) OVER (
             PARTITION BY r.observatory_b, l.type_habitat ORDER BY r.annee
         ) AS loyer_annee_precedente,
-        ROUND(
-            ((l.loyer_mensuel_moyen - LAG(l.loyer_mensuel_moyen) OVER (
+        CASE
+            WHEN r.annee - LAG(r.annee) OVER (
                 PARTITION BY r.observatory_b, l.type_habitat ORDER BY r.annee
-            )) / NULLIF(LAG(l.loyer_mensuel_moyen) OVER (
-                PARTITION BY r.observatory_b, l.type_habitat ORDER BY r.annee
-            ), 0) * 100)::numeric, 2
-        ) AS evolution_loyer_pct
+            ) > 1 THEN NULL
+            ELSE ROUND(
+                ((l.loyer_mensuel_moyen - LAG(l.loyer_mensuel_moyen) OVER (
+                    PARTITION BY r.observatory_b, l.type_habitat ORDER BY r.annee
+                )) / NULLIF(LAG(l.loyer_mensuel_moyen) OVER (
+                    PARTITION BY r.observatory_b, l.type_habitat ORDER BY r.annee
+                ), 0) * 100)::numeric, 2
+            )
+        END AS evolution_loyer_pct
 
     FROM revenus_obs r
     JOIN loyers_obs l            ON r.observatory_b = l.observatory_b AND r.annee = l.annee

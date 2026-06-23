@@ -6,7 +6,7 @@ from utils.geography import normaliser_insee
 from utils.validators import validate_not_null, validate_columns
 from utils.loader import copy_to_postgres
 
-SCHEMA = ["code_insee", "nom_commune", "code_postal", "code_departement", "region"]
+SCHEMA = ["code_insee", "nom_commune", "code_postal", "code_departement", "region", "uu2020", "reg"]
 CANDIDATS_INSEE = ["INSEE", "CODE INSEE", "L6A", "CODE_INSEE", "COMMUNE"]
 CANDIDATS_LIBCOM = ["LIB_COM", "LIBCOM", "NOM_COM", "COMMUNE"]
 
@@ -95,7 +95,15 @@ def extract_from_zonages(engine, conn) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def transform_dim_commune(frames: list) -> pd.DataFrame:
+def extract_from_ref_geo(engine) -> pd.DataFrame:
+    try:
+        return pd.read_sql("SELECT code_insee, uu2020, reg FROM staging.communes_geo", engine)
+    except Exception as e:
+        print(f"[DIM_COMMUNE] staging.communes_geo ignoré : {e}")
+        return pd.DataFrame(columns=["code_insee", "uu2020", "reg"])
+
+
+def transform_dim_commune(frames: list, df_geo: pd.DataFrame) -> pd.DataFrame:
     df = pd.concat(frames, ignore_index=True)
 
     for col in SCHEMA:
@@ -116,6 +124,14 @@ def transform_dim_commune(frames: list) -> pd.DataFrame:
         .fillna(0).astype(int).astype(str).str.zfill(5)
     )
     df.loc[df["code_postal"] == "00000", "code_postal"] = None
+
+    # Enrichissement uu2020 + reg depuis staging.communes_geo
+    if not df_geo.empty:
+        df_geo["code_insee"] = df_geo["code_insee"].astype(str).str.strip()
+        df = df.merge(df_geo[["code_insee", "uu2020", "reg"]], on="code_insee", how="left", suffixes=("", "_geo"))
+        df["uu2020"] = df["uu2020_geo"].combine_first(df["uu2020"])
+        df["reg"]    = df["reg_geo"].combine_first(df["reg"])
+        df = df.drop(columns=["uu2020_geo", "reg_geo"], errors="ignore")
 
     assert list(df.columns) == SCHEMA, "Schema mismatch dim_commune"
     return df
@@ -145,9 +161,10 @@ def run_silver_dim_commune():
     frames.append(extract_from_zonages(engine, conn))
 
     frames = [f for f in frames if not f.empty]
+    df_geo = extract_from_ref_geo(engine)
 
     print("[DIM_COMMUNE] Transformation...")
-    df = transform_dim_commune(frames)
+    df = transform_dim_commune(frames, df_geo)
     print(f"[DIM_COMMUNE] {len(df)} communes")
 
     print("[DIM_COMMUNE] Chargement...")

@@ -1,0 +1,69 @@
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: locatrack-db
+    shm_size: '512mb'
+    environment:
+      POSTGRES_DB: locatrack
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1234"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    command: >
+      postgres
+      -c statement_timeout=0
+      -c tcp_keepalives_idle=60
+      -c tcp_keepalives_interval=10
+      -c tcp_keepalives_count=6
+      -c work_mem=64MB
+      -c maintenance_work_mem=256MB
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./sql/schema_silver.sql:/docker-entrypoint-initdb.d/02_schema_silver.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d locatrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    container_name: locatrack-pipeline
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: locatrack
+      DB_USER: postgres
+      DB_PASSWORD: "1234"
+    volumes:
+      - ./data:/app/data
+    profiles:
+      - pipeline
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: locatrack-dashboard
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: locatrack
+      DB_USER: postgres
+      DB_PASSWORD: "1234"
+    ports:
+      - "8501:8501"
+
+volumes:
+  postgres_data:

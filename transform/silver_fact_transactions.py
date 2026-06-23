@@ -31,9 +31,10 @@ def extract_dvf(engine, years: list) -> pd.DataFrame:
                 "Nature_culture" as nature_culture
             FROM staging.dvf_{annee}
             WHERE "Nature_mutation" = 'Vente'
-              AND "Type_local" IS NOT NULL
+              AND "Type_local" IN ('Maison', 'Appartement')
               AND "Surface_reelle_bati" > 0
               AND "Valeur_fonciere" IS NOT NULL
+              AND REPLACE("Valeur_fonciere", ',', '.')::FLOAT > 0
         """, engine)
         frames.append(df)
         print(f"[FACT_TRANSACTIONS] DVF {annee} : {len(df)} lignes")
@@ -50,8 +51,13 @@ def transform_fact_transactions(df: pd.DataFrame) -> pd.DataFrame:
     df["prix_m2"] = df["valeur_fonciere"] / df["surface_bati"]
 
     df = validate_not_null(df, ["code_insee", "annee", "valeur_fonciere", "surface_bati"], source="fact_transactions")
-    df = validate_range(df, "prix_m2", min_val=0, max_val=100_000, source="fact_transactions")
+    df = validate_range(df, "prix_m2", min_val=500, max_val=13_731, source="fact_transactions")
     df = validate_range(df, "surface_bati", min_val=1, source="fact_transactions")
+
+    # Dédoublonnage : même bien vendu en bloc (copropriété, lotissement DVF)
+    before = len(df)
+    df = df.drop_duplicates(subset=["code_insee", "annee", "type_local", "valeur_fonciere", "surface_bati", "nombre_pieces"])
+    print(f"[FACT_TRANSACTIONS] Doublons supprimés : {before - len(df)}")
 
     return df[COLUMNS]
 

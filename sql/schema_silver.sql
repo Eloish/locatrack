@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS silver.fact_transactions CASCADE;
 DROP TABLE IF EXISTS silver.fact_revenus CASCADE;
 DROP TABLE IF EXISTS silver.fact_loyers CASCADE;
 
+DROP TABLE IF EXISTS silver.mapping_uu_agglomeration CASCADE;
 DROP TABLE IF EXISTS silver.bridge_commune_observatoire CASCADE;
 
 DROP TABLE IF EXISTS silver.dim_commune CASCADE;
@@ -12,7 +13,6 @@ DROP TABLE IF EXISTS silver.dim_observatoire CASCADE;
 DROP TABLE IF EXISTS silver.dim_agglomeration CASCADE;
 DROP TABLE IF EXISTS silver.dim_temps CASCADE;
 DROP TABLE IF EXISTS silver.dim_type_bien CASCADE;
-DROP TABLE IF EXISTS silver.mapping_communes CASCADE;
 
 -- =========================================================
 -- SCHEMAS
@@ -30,7 +30,7 @@ CREATE TABLE silver.dim_observatoire (
 );
 
 CREATE TABLE silver.dim_agglomeration (
-    id_agglomeration  SERIAL PRIMARY KEY,
+    id_agglomeration  INTEGER PRIMARY KEY,
     nom_agglomeration VARCHAR(255) UNIQUE NOT NULL
 );
 
@@ -39,7 +39,9 @@ CREATE TABLE silver.dim_commune (
     nom_commune      VARCHAR(255),
     code_postal      VARCHAR(5),
     code_departement VARCHAR(3),
-    region           VARCHAR(255)
+    region           VARCHAR(255),
+    uu2020           VARCHAR(10),
+    reg              VARCHAR(3)
 );
 
 CREATE TABLE silver.dim_temps (
@@ -70,6 +72,24 @@ CREATE TABLE silver.bridge_commune_observatoire (
         REFERENCES silver.dim_observatoire(observatory_b)
 );
 
+-- UNITÉ URBAINE ↔ AGGLOMÉRATION (N-N via observatoire)
+-- Construit par fuzzy matching entre les noms d'UU INSEE et les noms d'agglomérations CLAMEUR
+-- PK composite : une UU peut être rattachée à plusieurs agglomérations (une par observatoire)
+CREATE TABLE silver.mapping_uu_agglomeration (
+    uu2020            VARCHAR(10)  NOT NULL,
+    nom_uu            VARCHAR(255),
+    observatory_b     VARCHAR(20)  NOT NULL,
+    id_agglomeration  INTEGER,
+    nom_agglomeration VARCHAR(255),
+    score_fuzzy       FLOAT,
+    nb_communes_vote  INTEGER,
+
+    PRIMARY KEY (uu2020, observatory_b),
+
+    FOREIGN KEY (id_agglomeration)
+        REFERENCES silver.dim_agglomeration(id_agglomeration)
+);
+
 -- =========================================================
 -- FACT TABLES
 -- =========================================================
@@ -82,8 +102,8 @@ CREATE TABLE silver.fact_loyers (
     observatory_b        VARCHAR(20)  NOT NULL,
     id_agglomeration     INTEGER      NOT NULL,
     annee                INTEGER      NOT NULL,
-    type_habitat         VARCHAR(100) NOT NULL,  -- 'Ensemble' si global
-    nombre_pieces        VARCHAR(50)  NOT NULL,  -- 'Tous' si global
+    type_habitat         VARCHAR(100) NOT NULL,
+    nombre_pieces        VARCHAR(50)  NOT NULL,
 
     loyer_mensuel_median FLOAT,
     loyer_median_m2      FLOAT,

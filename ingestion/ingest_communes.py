@@ -8,12 +8,6 @@ from base_ingestor import BaseIngestor
 from utils.config import load_config, get_base_dir
 import os
 
-COLS_UTILES = [
-    "code_insee", "nom_standard", "epci_code", "epci_nom",
-    "nom_unite_urbaine", "code_postal", "reg_code", "reg_nom",
-    "dep_code", "dep_nom", "latitude_mairie", "longitude_mairie", "population",
-]
-
 
 class CommunesIngestor(BaseIngestor):
 
@@ -29,9 +23,7 @@ class CommunesIngestor(BaseIngestor):
         return response.content
 
     def read(self, raw: bytes) -> pd.DataFrame:
-        df = pd.read_csv(StringIO(raw.decode("utf-8")), sep=",", low_memory=False)
-        available = [c for c in COLS_UTILES if c in df.columns]
-        return df[available].copy()
+        return pd.read_csv(StringIO(raw.decode("utf-8")), sep=",", low_memory=False)
 
 
 def ingest_communes():

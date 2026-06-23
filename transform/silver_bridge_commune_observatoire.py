@@ -68,11 +68,10 @@ def extract_bridge(engine, conn) -> pd.DataFrame:
             """, engine)
             df["code_insee"] = df["code_insee"].astype(str).str.strip().str.zfill(5)
             df = df[df["code_insee"].str.match(r'^(\d{5}|2[AB]\d{3})$')]
-            # Normaliser arrondissements → commune principale
             df["code_insee"] = df["code_insee"].apply(normaliser_arrondissement)
             df["observatory_b"] = obs_code
             rows.append(df)
-            print(f"[BRIDGE_COMMUNE_OBS] {table} → {len(df)} communes")
+            print(f"[BRIDGE_COMMUNE_OBS] {table} -> {len(df)} communes")
         except Exception as e:
             print(f"[BRIDGE_COMMUNE_OBS] {table} ignoré : {e}")
 

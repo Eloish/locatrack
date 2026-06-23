@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    libc6-dev \
+    git \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.pipeline.txt .
+RUN pip install --no-cache-dir -r requirements.pipeline.txt
+
+COPY ingestion/ ./ingestion/
+COPY staging/ ./staging/
+COPY transform/ ./transform/
+COPY tests/ ./tests/
+COPY dbt/ ./dbt/
+COPY utils/ ./utils/
+COPY pipeline.py .
+COPY config.yml .
+COPY scripts/ ./scripts/
+
+CMD ["python", "pipeline.py", "--from-step", "ingestion"]

@@ -19,7 +19,7 @@ def copy_to_postgres(conn, df: pd.DataFrame, schema: str, table: str, columns: l
     run_id = log_start(conn, source)
     cur = conn.cursor()
     try:
-        cur.execute(f"TRUNCATE TABLE {source}")
+        cur.execute(f"TRUNCATE TABLE {source} CASCADE")
         buffer = StringIO()
         df[columns].to_csv(buffer, index=False, header=False, na_rep="")
         buffer.seek(0)

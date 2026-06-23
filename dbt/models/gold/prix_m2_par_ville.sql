@@ -14,10 +14,9 @@ WITH base AS (
     FROM silver.fact_transactions ft
     JOIN silver.dim_commune dc ON ft.code_insee = dc.code_insee
     WHERE ft.prix_m2 IS NOT NULL
-      AND ft.prix_m2 > 1
-      AND ft.prix_m2 < 100000
       AND ft.type_local IS NOT NULL
     GROUP BY ft.code_insee, dc.nom_commune, dc.code_departement, ft.annee, ft.type_local
+    HAVING COUNT(*) >= 10
 ),
 
 avec_lag AS (

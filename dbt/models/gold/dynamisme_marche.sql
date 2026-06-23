@@ -3,6 +3,7 @@
 -- Score de tension locative composite
 -- Combine 3 signaux : volume de transactions, évolution du prix, ratio loyer/revenu
 -- Score final normalisé entre 0 (détendu) et 100 (très tendu)
+-- Limité aux 5 dernières années (≥ 2020) pour limiter la charge mémoire sur les données DVF
 
 WITH transactions AS (
     SELECT
@@ -12,13 +13,15 @@ WITH transactions AS (
         ft.annee,
         ft.type_local,
         COUNT(*)                                   AS nb_transactions,
-        ROUND(AVG(ft.prix_m2)::numeric, 2)         AS prix_m2_moyen,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ft.prix_m2)::numeric, 2) AS prix_m2_moyen,
         ROUND(SUM(ft.valeur_fonciere)::numeric, 2) AS volume_total
     FROM silver.fact_transactions ft
     JOIN silver.dim_commune dc ON ft.code_insee = dc.code_insee
     WHERE ft.valeur_fonciere IS NOT NULL
       AND ft.type_local IN ('Appartement', 'Maison')
+      AND ft.annee >= 2020
     GROUP BY ft.code_insee, dc.nom_commune, dc.code_departement, ft.annee, ft.type_local
+    HAVING COUNT(*) >= 10
 ),
 
 -- Signal 1 : évolution du prix au m² (LAG)
@@ -28,13 +31,26 @@ avec_evolution AS (
         LAG(prix_m2_moyen) OVER (
             PARTITION BY code_insee, type_local ORDER BY annee
         ) AS prix_m2_precedent,
-        ROUND(
-            (prix_m2_moyen - LAG(prix_m2_moyen) OVER (
+        CASE
+            WHEN LAG(prix_m2_moyen) OVER (
                 PARTITION BY code_insee, type_local ORDER BY annee
-            )) / NULLIF(LAG(prix_m2_moyen) OVER (
+            ) < 500 THEN NULL
+            WHEN annee - LAG(annee) OVER (
                 PARTITION BY code_insee, type_local ORDER BY annee
-            ), 0) * 100
-        ::numeric, 2) AS hausse_prix_pct
+            ) > 1 THEN NULL
+            -- Seuil médiane : les deux années doivent avoir au moins 25 transactions (médiane observée)
+            WHEN LAG(nb_transactions) OVER (
+                PARTITION BY code_insee, type_local ORDER BY annee
+            ) < 25 THEN NULL
+            WHEN nb_transactions < 25 THEN NULL
+            ELSE ROUND(
+                (prix_m2_moyen - LAG(prix_m2_moyen) OVER (
+                    PARTITION BY code_insee, type_local ORDER BY annee
+                )) / NULLIF(LAG(prix_m2_moyen) OVER (
+                    PARTITION BY code_insee, type_local ORDER BY annee
+                ), 0) * 100
+            ::numeric, 2)
+        END AS hausse_prix_pct
     FROM transactions
 ),
 
@@ -78,16 +94,18 @@ score_composite AS (
         tl.ratio_tension_pct,
         vn.percentile_volume,
 
-        -- Score composite : moyenne pondérée des 3 signaux
+        -- Score composite : poids adaptés selon disponibilité des données OLL
         ROUND(
-            (
-                -- 40% : ratio loyer/revenu (normalisé sur 100)
-                COALESCE(LEAST(tl.ratio_tension_pct, 100), 50) * 0.40
-                -- 35% : hausse des prix (capée à 20% max)
+            CASE WHEN tl.ratio_tension_pct IS NULL THEN
+                -- Sans données OLL : redistribution sur hausse prix (60%) et volume (40%)
+                  COALESCE(LEAST(GREATEST(e.hausse_prix_pct, 0), 20), 0) / 20 * 100 * 0.60
+                + COALESCE(vn.percentile_volume, 50) * 0.40
+            ELSE
+                -- Avec données OLL : 40% ratio loyer/revenu, 35% hausse prix, 25% volume
+                  LEAST(tl.ratio_tension_pct, 100) * 0.40
                 + COALESCE(LEAST(GREATEST(e.hausse_prix_pct, 0), 20), 0) / 20 * 100 * 0.35
-                -- 25% : volume de transactions (percentile)
                 + COALESCE(vn.percentile_volume, 50) * 0.25
-            )::numeric, 1
+            END::numeric, 1
         ) AS score_tension
 
     FROM avec_evolution e

@@ -12,8 +12,13 @@ def get_engine():
     if _engine is None:
         config = load_config()
         db = config["database"]
+        host = os.environ.get("DB_HOST", db["host"])
+        port = os.environ.get("DB_PORT", db["port"])
+        user = os.environ.get("DB_USER", db["user"])
+        password = os.environ.get("DB_PASSWORD", db["password"])
+        name = os.environ.get("DB_NAME", db["name"])
         _engine = create_engine(
-            f"postgresql://{db['user']}:{db['password']}@{db['host']}:{db['port']}/{db['name']}"
+            f"postgresql://{user}:{password}@{host}:{port}/{name}"
         )
     return _engine
 

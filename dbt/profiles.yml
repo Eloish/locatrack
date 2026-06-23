@@ -1,0 +1,12 @@
+locatrack:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DB_HOST', 'localhost') }}"
+      port: 5432
+      user: postgres
+      password: "1234"
+      dbname: locatrack
+      schema: gold
+      threads: 4
