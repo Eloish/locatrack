@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.dashboard.txt
 COPY dashboard/ ./dashboard/
 COPY utils/ ./utils/
 COPY config.yml .
+COPY .streamlit/ ./.streamlit/
 
 EXPOSE 8501
 

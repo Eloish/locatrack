@@ -8,6 +8,48 @@ def render_sidebar():
         /* ── Fond général ── */
         .stApp { background-color: #f5f7fa; }
 
+        /* ── Barre de navigation du haut (st.navigation position="top") ── */
+        header[data-testid="stHeader"] {
+            background: #1a2e4a !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+        /* Logo / nom à gauche */
+        header[data-testid="stHeader"]::before {
+            content: "🏠 LocaTrack";
+            color: #ffffff;
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            padding-left: 1.3rem;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Conteneur des liens : aligner le menu à droite */
+        [data-testid="stTopNavSection"],
+        [data-testid="stTopNavLinkContainer"] {
+            justify-content: flex-end !important;
+            margin-left: auto !important;
+        }
+
+        /* Liens du menu : texte clair */
+        [data-testid="stTopNavLink"],
+        [data-testid="stTopNavLink"] * {
+            color: #e2e8f0 !important;
+            font-weight: 500;
+        }
+
+        /* Lien actif / survol */
+        [data-testid="stTopNavLink"]:hover,
+        [data-testid="stTopNavLink"][aria-current="page"] {
+            color: #ffffff !important;
+            background: rgba(255,255,255,0.12) !important;
+            border-radius: 6px;
+        }
+        [data-testid="stTopNavLink"][aria-current="page"] * { color: #ffffff !important; }
+
         /* ── st.metric font size ── */
         [data-testid="stMetricValue"] { font-size: 1.3rem !important; }
         [data-testid="stMetricLabel"] { font-size: 0.8rem !important; }

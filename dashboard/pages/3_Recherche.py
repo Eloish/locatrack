@@ -6,7 +6,6 @@ import pandas as pd
 from components.sidebar import render_sidebar
 from db import query
 
-st.set_page_config(page_title="Recherche de ville", page_icon="🔍", layout="wide")
 render_sidebar()
 st.title("🔍 Trouver la ville la plus accessible")
 
@@ -148,8 +147,9 @@ if "df_recherche" in st.session_state:
             )
             df = df[mask]
 
-        df_display = df.sort_values("taux_effort_vous").reset_index(drop=True).assign(
-            accessibilite=df["taux_effort_vous"].apply(
+        df_display = df.sort_values("taux_effort_vous").reset_index(drop=True)
+        df_display = df_display.assign(
+            accessibilite=df_display["taux_effort_vous"].apply(
                 lambda x: "🟢 Accessible" if x < 33 else ("🟡 Tendu" if x < 50 else "🔴 Difficile")
             )
         )

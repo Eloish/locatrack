@@ -8,7 +8,6 @@ import plotly.graph_objects as go
 from components.sidebar import render_sidebar
 from db import query
 
-st.set_page_config(page_title="Comparaison", page_icon="⚖️", layout="wide")
 render_sidebar()
 st.title("⚖️ Comparaison des agglomérations")
 st.markdown("""

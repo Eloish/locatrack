@@ -7,7 +7,6 @@ import requests
 from db import query
 from components.sidebar import render_sidebar
 
-st.set_page_config(page_title="Carte des tensions", page_icon="🗺️", layout="wide")
 render_sidebar()
 
 st.title("🗺️ Carte des tensions locatives")
