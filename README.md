@@ -50,16 +50,16 @@ docker compose up dashboard
 locatrack/
 ├── ingestion/        # Téléchargement et validation des sources brutes (bronze)
 ├── staging/          # Chargement des fichiers bronze en base PostgreSQL
-├── transform/        # Nettoyage et modélisation silver (schéma en étoile)
+├── transform/        # Nettoyage et modélisation silver (schéma en flocon de neige)
 ├── dbt/              # Modèles gold (indicateurs métier via dbt)
-├── dashboard/        # Application Streamlit (3 pages)
+├── dashboard/        # Application Streamlit (accueil + 3 vues)
 ├── tests/            # Validation qualité Great Expectations
 ├── utils/            # Connexion DB, config, loader, validators
 ├── scripts/          # Outils de maintenance (reset run_log, force reload)
 ├── sql/              # Initialisation des schémas PostgreSQL
 ├── data/
 │   ├── bronze/       # Données sources brutes (non versionnées)
-│   └── referentiel/  # Fichiers de référence et overrides manuels
+│   └── referentiel/  # Fichiers de référence géographique
 ├── pipeline.py       # Orchestration Luigi (toutes les étapes)
 ├── docker-compose.yml
 ├── Dockerfile.pipeline
@@ -76,7 +76,7 @@ Le pipeline suit une architecture **médaillon** en 4 couches :
 ```
 Bronze          Staging         Silver              Gold
 ──────────      ───────────     ──────────────      ──────────────────
-Fichiers        Tables raw      Schéma en étoile    Indicateurs métier
+Fichiers        Tables raw      Flocon de neige     Indicateurs métier
 parquet/csv  →  PostgreSQL   →  nettoyé + validé →  (dbt)
                                GE validé
 ```
