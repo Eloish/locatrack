@@ -110,11 +110,13 @@ Chargement des revenus médians par commune et par année. Aucun filtre métier.
 
 **Composition du score de tension :**
 
-| Signal | Poids | Ce que ça mesure |
-|--------|-------|-----------------|
-| Ratio loyer / revenu | 40% | Pression financière sur les ménages |
-| Hausse des prix au m² (capée à 20%) | 35% | Dynamisme / spéculation du marché |
-| Volume de transactions (percentile) | 25% | Activité du marché |
+| Signal | Poids (avec OLL) | Poids (sans OLL) | Ce que ça mesure |
+|--------|------------------|------------------|-----------------|
+| Ratio loyer / revenu | 40% | 0% | Pression financière sur les ménages |
+| Hausse des prix au m² (capée à 20%) | 35% | 60% | Dynamisme / spéculation du marché |
+| Volume de transactions (percentile) | 25% | 40% | Activité du marché |
+
+> Quand une commune n'a pas de données OLL (hors périmètre des observatoires), le signal ratio loyer/revenu est absent : son poids est redistribué sur les deux autres signaux plutôt que d'imputer une valeur par défaut.
 
 **Lecture du score :**
 - 0–25 : Détendu
@@ -197,7 +199,7 @@ La normalisation supprime les préfixes génériques : "Agglomération de", "Com
 
 ### Étape 3 — Le fallback national
 
-Quand le vote ne produit pas de bons candidats (score fuzzy < 70%), on cherche dans **toutes les UU de France**. C'est le cas d'Arles : les communes de B1300 sont majoritairement dans l'UU Marseille-Aix-en-Provence, donc le vote ne propose jamais l'UU Arles comme candidat. Le fallback cherche directement "arles" dans les 2 000 UU françaises et trouve l'UU correcte.
+Quand le vote ne produit pas de bons candidats (score fuzzy < 70%), on cherche dans **toutes les UU de France**. C'est le cas d'Arles : les communes de B1300 sont majoritairement dans l'UU Marseille-Aix-en-Provence, donc le vote ne propose jamais l'UU Arles comme candidat. Le fallback cherche directement "arles" dans les 2 568 UU françaises et trouve l'UU correcte.
 
 ### Limites du mapping
 
@@ -215,7 +217,7 @@ Quand le vote ne produit pas de bons candidats (score fuzzy < 70%), on cherche d
 |--------|--------|----------------------|
 | Données Filosofi bloquées à 2021 | Le ratio loyer/revenu utilise des revenus de 2021 même pour les loyers 2024 | Mettre à jour quand l'INSEE publie les données 2022-2023 |
 | Pas de mise à jour incrémentielle DVF | Recharger DVF recharge toutes les années | Implémenter un filtre par année dans `run_log` |
-| Mapping UU-agglomération par fuzzy match | Quelques erreurs résiduelles possibles (score 70-80%) | Enrichir le fichier d'overrides manuels |
+| Mapping UU-agglomération par fuzzy match | Quelques erreurs résiduelles possibles (score 70-80%) | Affiner la normalisation des noms ou réintroduire un mécanisme d'overrides manuels pour les cas limites |
 | Score de tension = proxy | Pas de vraies données offre/demande (délai de vente, nb biens disponibles) | Intégrer SeLoger API ou données DVF sur les biens retirés |
 | DOM-TOM peu fiables | Données DVF et OLL de moindre qualité en outre-mer | Ajouter un filtre ou un avertissement sur la carte |
 
