@@ -71,8 +71,8 @@ label = {
 # ── KPI ────────────────────────────────────────────────────────────────────────
 commune_top = df.groupby("nom_commune")[indicateur].mean().idxmax()
 val_moyenne   = round(df[indicateur].mean(), 1)
-nb_communes   = len(df)
-nb_tres_tendu = len(df[df["categorie_tension"] == "Très tendu"])
+nb_communes   = df["nom_commune"].nunique()
+nb_tres_tendu = df[df["categorie_tension"] == "Très tendu"]["nom_commune"].nunique()
 
 unite = {"score_tension": "", "prix_m2_moyen": " €", "hausse_prix_pct": " %"}[indicateur]
 
